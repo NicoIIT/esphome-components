@@ -57,7 +57,7 @@ typedef struct { /* Advertising Data for version 1*/
 // decoded (from last prefix[9] 0x00):
 // 00 12 00 04 22 5c 13 d2 05 28 00 00 00 00 00 e0 fe 00
 // => type: 0x0400
-
+// 00 01 00 04 65 d3 f3 bf 00 11 00 00 00 00 00 92 64 00
 static uint8_t HEADERv1a[7] = {0x02, 0x01, 0x1A, 0x1B, 0x03, 0x77, 0xF8};
 static uint8_t HEADERv1b[8] = {0x02, 0x01, 0x02, 0x1B, 0x03, 0xF9, 0x08, 0x49};
 static uint8_t PREFIXv1[8] = {0xAA, 0x98, 0x43, 0xAF, 0x0B, 0x46, 0x46, 0x46};
@@ -302,7 +302,7 @@ void FanLampEncoder::build_packet_v2(uint8_t * buf, Command &cmd, bool with_sign
   packet->identifier = cmd.id_;
   packet->command = cmd_real.cmd_;
   std::copy(cmd_real.args_, cmd_real.args_ + sizeof(cmd_real.args_), packet->args);
-  packet->group_index = 0;
+  packet->group_index = 5;
   packet->rand = seed;
 
   ESP_LOGD(TAG, "%s - ID: '0x%08X', tx: %d, Command: '0x%02X', Args: [%d,%d,%d,%d]", this->id_.c_str(), cmd.id_, 
