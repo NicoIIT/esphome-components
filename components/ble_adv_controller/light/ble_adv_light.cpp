@@ -52,9 +52,10 @@ void BleAdvLight::write_state(light::LightState *state) {
 
   // During transition(current / remote states are the same), do not process change 
   //    if Brigtness / Color Temperature was not modified enough
-  bool br_modified = abs(this->brightness_ - updated_br) > 5;
-  bool ct_modified = abs(this->warm_color_ - updated_ct) > 5;
-  if (!br_modified && !ct_modified && (state->current_values != state->remote_values)) {
+  uint8_t br_diff = abs(this->brightness_ - updated_br);
+  uint8_t ct_diff = abs(this->warm_color_ - updated_ct);
+  bool is_last = (state->current_values == state->remote_values);
+  if (br_diff < 5 && ct_diff < 5 && !is_last) {
     return;
   }
   
@@ -65,10 +66,10 @@ void BleAdvLight::write_state(light::LightState *state) {
   if(this->get_parent()->is_supported(CommandType::LIGHT_WCOLOR)) {
     this->command(CommandType::LIGHT_WCOLOR, updated_ct, updated_br);
   } else {
-    if (ct_modified) {
+    if (ct_diff != 0) {
       this->command(CommandType::LIGHT_CCT, updated_ct);
     }
-    if (br_modified || (this->brightness_after_color_change_ && ct_modified)) {
+    if (br_diff != 0) {
       this->command(CommandType::LIGHT_DIM, updated_br);
     }
   }
