@@ -71,6 +71,7 @@ void BleAdvHandler::remove_from_advertiser(uint16_t msg_id) {
 }
 
 void BleAdvHandler::loop() {
+  esp_err_t err = ESP_OK;
   if (this->adv_stop_time_ == 0) {
     // No packet is being advertised, process with clean-up IF already processed once and requested for removal
     this->packets_.remove_if([&](BleAdvProcess & p){ return p.processed_once_ && p.to_be_removed_; } );
@@ -80,13 +81,26 @@ void BleAdvHandler::loop() {
       //ESP_LOGD(TAG, "Effective advertising start at %d: id %d - %s", millis(), this->packets_.front().id_,
       //        esphome::format_hex_pretty(packet.buf_, packet.len_).c_str());
       if (packet.len_ == MAX_PACKET_LEN) {
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_config_adv_data_raw(packet.buf_, packet.len_));
+        err = esp_ble_gap_config_scan_rsp_data_raw(packet.buf_, packet.len_);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "esp_ble_gap_config_scan_rsp_data_raw failed: %s", esp_err_to_name(err));
+        }
+        err = esp_ble_gap_config_adv_data_raw(packet.buf_, packet.len_);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "esp_ble_gap_config_adv_data_raw failed: %s", esp_err_to_name(err));
+        }
       } else {
         this->adv_data_.p_manufacturer_data = packet.buf_;
         this->adv_data_.manufacturer_len = packet.len_;
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_config_adv_data(&(this->adv_data_)));
+        err = esp_ble_gap_config_adv_data(&(this->adv_data_));
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "esp_ble_gap_config_adv_data failed: %s", esp_err_to_name(err));
+        }
       }
-      ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_start_advertising(&(this->adv_params_)));
+      err = esp_ble_gap_start_advertising(&(this->adv_params_));
+      if (err != ESP_OK) {
+          ESP_LOGE(TAG, "esp_ble_gap_start_advertising failed: %s", esp_err_to_name(err));
+      }
       this->adv_stop_time_ = millis() + this->packets_.front().param_.duration_;
       this->packets_.front().processed_once_ = true;
     }
@@ -100,8 +114,10 @@ void BleAdvHandler::loop() {
       //ESP_LOGD(TAG, "Effective advertising stop at %d: id %d", millis(), this->packets_.front().id_);
       //ESP_LOGD(TAG, "Nb Packets: %d", this->packets_.size() );
       //ESP_LOGD(TAG, "Front to be removed: %s", front_to_be_removed ? "Y":"N" );
-      ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_stop_advertising());
-      delay(10); // Not sure it helps, but...
+      err = esp_ble_gap_stop_advertising();
+      if (err != ESP_OK) {
+          ESP_LOGE(TAG, "esp_ble_gap_stop_advertising failed: %s", esp_err_to_name(err));
+      }
       this->adv_data_.p_manufacturer_data = nullptr;
       this->adv_data_.manufacturer_len = 0;
       this->adv_stop_time_ = 0;
