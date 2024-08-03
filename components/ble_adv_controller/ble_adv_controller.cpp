@@ -104,13 +104,6 @@ bool BleAdvController::enqueue(Command &cmd) {
   // enqueue the new command and encode the buffer(s)
   this->commands_.emplace_back(cmd.cmd_);
   this->tx_count_ += encoder.get_adv_data(this->commands_.back().params_, cmd);
-  
-  // DEV TEMP: double the brightness / color temp command
-  if (cmd.cmd_ == CommandType::LIGHT_DIM || cmd.cmd_ == CommandType::LIGHT_CCT) {
-    cmd.tx_count_ = this->tx_count_;
-    this->tx_count_ += encoder.get_adv_data(this->commands_.back().params_, cmd);
-  }
-
   if (this->tx_count_ > 127) {
     this->tx_count_ = 1;
   }

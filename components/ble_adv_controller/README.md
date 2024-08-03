@@ -49,7 +49,6 @@ The technical solution implemented by manufacturers to control those devices is 
 ble_adv_controller:
   - id: my_controller
     encoding: zhijia
-    duration: 200
 
 light:
   - platform: ble_adv_controller
@@ -63,7 +62,31 @@ button:
     cmd: pair
 ```
 
-## Example configuration: Composed lamp using fanlamp_pro with a main light, a secondary light, a fan and a Pair button
+## Example configuration: basic device using FanLamp Pro encoding v3, with light, fan and Pair button
+
+```yaml
+ble_adv_controller:
+  - id: my_controller
+    encoding: fanlamp_pro
+
+light:
+  - platform: ble_adv_controller
+    ble_adv_controller_id: my_controller
+    name: Main Light
+
+fan:
+  - platform: ble_adv_controller
+    ble_adv_controller_id: my_controller
+    name: Fan
+
+button:
+  - platform: ble_adv_controller
+    ble_adv_controller_id: my_controller
+    name: Pair
+    cmd: pair
+```
+
+## Example configuration: All options and their default values
 
 ```yaml
 ble_adv_controller:
@@ -107,11 +130,11 @@ light:
     # min_brightness: % minimum brightness supported by the light before it shuts done
     # just setup this value to 0, then test your lamp by decreasing the brightness percent by percent. 
     # when it switches off, you have the min_brightness to setup here.
-    # Default to 21%
-    min_brightness: 21%
-    # send_brightness_after_color_temperature_change: refresh the brightness after the color temperature was changed.
-    # workaround for issue https://github.com/aronsky/esphome-components/issues/18
-    send_brightness_after_color_temperature_change: false
+    # Default to 1%
+    min_brightness: 1%
+    # constant_brightness (default to false): the natural white is usually brighter than the cold or warm color
+    # if you setup constant_brightness to true, the natural white will have same brightness than cold and warm ones
+    constant_brightness: false
 
   - platform: ble_adv_controller
     ble_adv_controller_id: my_controller
