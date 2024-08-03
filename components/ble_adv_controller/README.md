@@ -135,6 +135,10 @@ light:
     # constant_brightness (default to false): the natural white is usually brighter than the cold or warm color
     # if you setup constant_brightness to true, the natural white will have same brightness than cold and warm ones
     constant_brightness: false
+    # separate_dim_cct (default to false): Zhi Jia ONLY
+    # if true, 2 distinct commands will be sent to the lamp for brightness and color temperature
+    # may be needed for some Zhi Jia v2 lamps that do not support a unique command
+    separate_dim_cct: false
 
   - platform: ble_adv_controller
     ble_adv_controller_id: my_controller
@@ -185,6 +189,9 @@ Once you managed to define the relevant values (without the need to re flash eac
 
 ### Reverse Cold / Warm
 If this component works, but the cold and warm temperatures are reversed (that is, setting the temperature in Home Assistant to warm results in cold/blue light, and setting it to cold results in warm/yellow light), add a `reversed: true` line to your `ble_adv_controller` config.
+
+### Cold / Warm and brightness do not work on Zhi Jia v1 or v2 lamp
+If the brightness or color temperature does not work for your Zhi Jia v1 or v2 lamp, please setup the `separate_dim_cct` option to true and try again.
 
 ### Minimum Brightness
 If the minimum brightness is too bright, and you know that your light can go darker - try changing the minimum brightness via the `min_brightness` configuration option (it takes a percentage).

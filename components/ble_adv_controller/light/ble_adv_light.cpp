@@ -63,7 +63,7 @@ void BleAdvLight::write_state(light::LightState *state) {
   this->brightness_ = updated_brf;
   this->warm_color_ = updated_ctf;
 
-  if(this->get_parent()->is_supported(CommandType::LIGHT_WCOLOR)) {
+  if(this->get_parent()->is_supported(CommandType::LIGHT_WCOLOR) && !this->split_dim_cct_) {
     light::LightColorValues eff_values = state->current_values;
     eff_values.set_brightness(updated_brf);
     float cwf, wwf;
