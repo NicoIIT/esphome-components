@@ -555,6 +555,13 @@ ZhijiaArgs_t ZhijiaEncoder::translate_cmd(const Command &cmd) {
     case CommandType::LIGHT_OFF:
       cmd_real.cmd_ = isV0 ? 0xB2 : 0xA6;  // -78 : -90
       break;
+    case CommandType::LIGHT_WCOLOR:
+      if (isV2) {
+        cmd_real.cmd_ = 0xA8;
+        cmd_real.args_[0] = cmd.args_[0];
+        cmd_real.args_[1] = cmd.args_[1];
+      }
+      break;
     case CommandType::LIGHT_DIM:
       if(isV0) {
         cmd_real.cmd_ = 0xB5; // -75

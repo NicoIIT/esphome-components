@@ -61,10 +61,18 @@ void BleAdvLight::write_state(light::LightState *state) {
   
   this->brightness_ = updated_br;
   this->warm_color_ = updated_ct;
-  ESP_LOGD(TAG, "Cold: %d, Warm: %d, Brightness: %d", 255 - updated_ct, updated_ct, updated_br);
 
   if(this->get_parent()->is_supported(CommandType::LIGHT_WCOLOR)) {
-    this->command(CommandType::LIGHT_WCOLOR, updated_ct, updated_br);
+    light::LightColorValues eff_values = state->current_values;
+    eff_values.set_brightness(ensure_range(this->min_brightness_ + state->current_values.get_brightness() * (1.f - this->min_brightness_)));
+    float cwf, wwf;
+    if (this->get_parent()->is_reversed()) {
+      eff_values.as_cwww(&wwf, &cwf, 0, false);
+    } else {
+      eff_values.as_cwww(&cwf, &wwf, 0, false);
+    }
+    ESP_LOGD(TAG, "Cold: %.0f, Warm: %.0f", cwf*100, wwf*100);
+    this->command(CommandType::LIGHT_WCOLOR, (uint8_t) (cwf*255), (uint8_t) (wwf*255));
   } else {
     if (ct_diff != 0) {
       this->command(CommandType::LIGHT_CCT, updated_ct);

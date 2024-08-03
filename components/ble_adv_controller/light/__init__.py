@@ -32,7 +32,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.GenerateID(CONF_OUTPUT_ID): cv.declare_id(BleAdvLight),
                 cv.Optional(CONF_COLD_WHITE_COLOR_TEMPERATURE, default="167 mireds"): cv.color_temperature,
                 cv.Optional(CONF_WARM_WHITE_COLOR_TEMPERATURE, default="333 mireds"): cv.color_temperature,
-                cv.Optional(CONF_MIN_BRIGHTNESS, default=0.21): cv.percentage,
+                cv.Optional(CONF_MIN_BRIGHTNESS, default="1%"): cv.percentage,
                 # override default value of default_transition_length to 0s as mostly not supported by those lights
                 cv.Optional(CONF_DEFAULT_TRANSITION_LENGTH, default="0s"): cv.positive_time_period_milliseconds,
                 cv.Optional(CONF_BRIGHTNESS_AFTER_COLOR_CHANGE, default=False): cv.boolean,
