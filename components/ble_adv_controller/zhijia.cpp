@@ -560,8 +560,8 @@ ZhijiaArgs_t ZhijiaEncoder::translate_cmd(const Command &cmd) {
         cmd_real.cmd_ = 0; // no corresponding command found, maybe -92 ?
       } else {
         cmd_real.cmd_ = 0xA8; // -88
-        cmd_real.args_[0] = (250 * (float)cmd.args_[0]) / 255;
-        cmd_real.args_[1] = (250 * (float)cmd.args_[1]) / 255;
+        cmd_real.args_[0] = (250 * (float)cmd.args_[1]) / 255;
+        cmd_real.args_[1] = (250 * (float)cmd.args_[0]) / 255;
       }
       break;
     case CommandType::LIGHT_DIM:
