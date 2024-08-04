@@ -208,7 +208,7 @@ FanLampArgs FanLampEncoder::translate_cmd(const Command &cmd) {
 }
 
 void FanLampEncoder::build_packet_v1(uint8_t* buf, Command &cmd) {
-  uint16_t seed = this->get_seed() & 0xFF;
+  uint16_t seed = this->get_seed();// & 0xFF;
   uint16_t cmd_id_trunc = static_cast<uint16_t>(cmd.id_ & 0xF0FF);
   adv_data_v1_t *packet = (adv_data_v1_t*)buf;
   std::copy(PREFIXv1, PREFIXv1 + sizeof(PREFIXv1), packet->prefix);
