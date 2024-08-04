@@ -43,7 +43,7 @@ typedef struct { /* Advertising Data for version 1*/
 static uint8_t HEADERv1a[7] = {0x02, 0x01, 0x02, 0x1B, 0x03, 0x77, 0xF8};
 static uint8_t HEADERv1b[8] = {0x02, 0x01, 0x02, 0x1B, 0x03, 0xF9, 0x08, 0x49};
 static uint8_t PREFIXv1[8] = {0xAA, 0x98, 0x43, 0xAF, 0x0B, 0x46, 0x46, 0x46};
-static uint8_t PREFIXv2[10] = {0x02, 0x01, 0x02, 0x1B, 0x16, 0xF0, 0x08, 0x10, 0x80, 0x00};
+static uint8_t PREFIXv2[10] = {0x02, 0x01, 0x02, 0x1B, 0x03, 0xF0, 0x08, 0x10, 0x80, 0x00};
 
 static uint8_t XBOXES[128] = {
   0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC,
@@ -216,13 +216,13 @@ void FanLampEncoder::build_packet_v1(uint8_t* buf, Command &cmd) {
   packet->group_idx = static_cast<uint16_t>(cmd.id_ & 0xF0FF);
   packet->tx_count = cmd.tx_count_;
   packet->outs = 0;
-  packet->src = static_cast<uint8_t>(seed ^ 1);
-  packet->r2 = static_cast<uint8_t>(seed ^ 1);
+  packet->src = static_cast<uint8_t>((seed & 0xFF) ^ 0x3D);
+  packet->r2 = static_cast<uint8_t>(seed & 0xFF);
   packet->seed = htons(seed);
   if (cmd.cmd_ == CommandType::PAIR) {
     packet->channel1 = static_cast<uint8_t>(packet->group_idx & 0xFF);
     packet->channel2 = static_cast<uint8_t>(packet->group_idx >> 8);
-    packet->channel3 = 0x81;
+    packet->channel3 = 0x83;
   } else {
     packet->channel1 = cmd_real.args_[0];
     packet->channel2 = cmd_real.args_[1];
@@ -267,7 +267,7 @@ void FanLampEncoder::build_packet_v1b(uint8_t* buf, Command &cmd) {
   v1_whiten(buf + base, 8+base, size-base, 83);
 }
 
-void FanLampEncoder::build_packet_v2(uint8_t * buf, Command &cmd, bool with_sign) {
+void FanLampEncoder::build_packet_v2(uint8_t * buf, Command &cmd, bool isV3) {
   uint16_t seed = this->get_seed();
   adv_data_v2_t * packet = (adv_data_v2_t *) buf;
   std::copy(PREFIXv2, PREFIXv2 + sizeof(PREFIXv2), packet->prefix);
@@ -283,8 +283,9 @@ void FanLampEncoder::build_packet_v2(uint8_t * buf, Command &cmd, bool with_sign
   ESP_LOGD(TAG, "%s - ID: '0x%08X', tx: %d, Command: '0x%02X', Args: [%d,%d,%d,%d]", this->id_.c_str(), cmd.id_, 
           packet->packet_number, packet->command, packet->args[0], packet->args[1], packet->args[2], packet->args[3]);
 
-  if (with_sign) {
+  if (isV3) {
     packet->sign = sign(buf + 8, packet->packet_number, seed);
+    buf[7] = 0x20;
   }
 
   v2_whiten(buf + 9, 18, (uint8_t) seed, 0);
