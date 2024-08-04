@@ -214,7 +214,7 @@ void FanLampEncoder::build_packet_v1(uint8_t* buf, Command &cmd) {
   std::copy(PREFIXv1, PREFIXv1 + sizeof(PREFIXv1), packet->prefix);
   FanLampArgs cmd_real = this->translate_cmd(cmd);
   packet->command = cmd_real.cmd_;
-  packet->group_idx = cmd_id_trunc | 0x0100; // group index 1
+  packet->group_idx = cmd_id_trunc;// | 0x0100; // group index 1
   packet->tx_count = cmd.tx_count_;
   packet->outs = 0;
   packet->src = static_cast<uint8_t>((seed & 0xFF) ^ 0x3D);
