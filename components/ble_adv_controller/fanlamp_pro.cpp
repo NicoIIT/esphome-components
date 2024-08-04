@@ -216,13 +216,16 @@ void FanLampEncoder::build_packet_v1(uint8_t* buf, Command &cmd) {
   packet->group_idx = static_cast<uint16_t>(cmd.id_ & 0xF0FF);
   packet->tx_count = cmd.tx_count_;
   packet->outs = 0;
-  packet->src = static_cast<uint8_t>((seed & 0xFF) ^ 0x3D);
-  packet->r2 = static_cast<uint8_t>(seed & 0xFF);
+  packet->src = static_cast<uint8_t>(seed ^ 1);
+  packet->r2 = static_cast<uint8_t>(seed ^ 1);
+  //packet->src = static_cast<uint8_t>((seed & 0xFF) ^ 0x3D);
+  //packet->r2 = static_cast<uint8_t>(seed & 0xFF);
   packet->seed = htons(seed);
   if (cmd.cmd_ == CommandType::PAIR) {
     packet->channel1 = static_cast<uint8_t>(packet->group_idx & 0xFF);
     packet->channel2 = static_cast<uint8_t>(packet->group_idx >> 8);
     packet->channel3 = 0x83;
+    //packet->channel3 = 0x81;
   } else {
     packet->channel1 = cmd_real.args_[0];
     packet->channel2 = cmd_real.args_[1];
@@ -305,7 +308,7 @@ void FanLampEncoder::build_packet_v2(uint8_t * buf, Command &cmd, bool isV3) {
   std::copy(PREFIXv2, PREFIXv2 + sizeof(PREFIXv2), packet->prefix);
   FanLampArgs cmd_real = this->translate_cmd(cmd);
   packet->packet_number = cmd.tx_count_;
-  packet->type = 0x0400;
+  packet->type = 0x0100;
   packet->identifier = cmd.id_;
   packet->command = cmd_real.cmd_;
   std::copy(cmd_real.args_, cmd_real.args_ + sizeof(cmd_real.args_), packet->args);
