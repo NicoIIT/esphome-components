@@ -208,21 +208,20 @@ FanLampArgs FanLampEncoder::translate_cmd(const Command &cmd) {
 }
 
 void FanLampEncoder::build_packet_v1(uint8_t* buf, Command &cmd) {
-  uint16_t seed = this->get_seed() & 0xFF;
-  uint16_t cmd_id_trunc = static_cast<uint16_t>(cmd.id_ & 0xF0FF);
+  uint16_t seed = this->get_seed();
   adv_data_v1_t *packet = (adv_data_v1_t*)buf;
   std::copy(PREFIXv1, PREFIXv1 + sizeof(PREFIXv1), packet->prefix);
   FanLampArgs cmd_real = this->translate_cmd(cmd);
   packet->command = cmd_real.cmd_;
-  packet->group_idx = cmd_id_trunc;// | 0x0100; // group index 1
+  packet->group_idx = static_cast<uint16_t>(cmd.id_ & 0xF0FF);
   packet->tx_count = cmd.tx_count_;
   packet->outs = 0;
   packet->src = static_cast<uint8_t>((seed & 0xFF) ^ 0x3D);
   packet->r2 = static_cast<uint8_t>(seed & 0xFF);
   packet->seed = htons(seed);
   if (cmd.cmd_ == CommandType::PAIR) {
-    packet->channel1 = static_cast<uint8_t>(cmd_id_trunc & 0xFF);
-    packet->channel2 = static_cast<uint8_t>(cmd_id_trunc >> 8);
+    packet->channel1 = static_cast<uint8_t>(packet->group_idx & 0xFF);
+    packet->channel2 = static_cast<uint8_t>(packet->group_idx >> 8);
     packet->channel3 = 0x83;
   } else {
     packet->channel1 = cmd_real.args_[0];
@@ -269,7 +268,7 @@ void FanLampEncoder::build_packet_v1a(uint8_t* buf, Command &cmd) {
   uint16_t* crc16_2 = (uint16_t*) &buf[size-2];
   *crc16_2 = htons(v2_crc16_ccitt(buf + base + 8, 14, v2_crc16_ccitt(buf + base + 1, 5, 0xffff)));
 
-  ESP_LOGD(TAG, "base: %s", esphome::format_hex_pretty(buf, MAX_PACKET_LEN).c_str());
+  ESP_LOGD(TAG, "base: %s", esphome::format_hex_pretty(buf, size).c_str());
 
   for (size_t i=base; i < size; i++) {
     buf[i] = reverse_byte(buf[i]);
