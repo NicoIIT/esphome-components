@@ -62,20 +62,19 @@ To build the Data section corresponding to a command, the encoding is done as fo
 # Capturing Advertising messages
 It can be usefull to capture the messages sent by a phone app or a remote already paired with the device you want to control, in order to extract some info such as the `identifier` for instance.
 
-This can be done quite 'easily' using the [ESPHome BLE Tracker](https://esphome.io/components/esp32_ble_tracker.html) component, and this config (you need to have at least one ble_adv_controller defined):
+This can be done quite 'easily' using the [ESPHome BLE Tracker](https://esphome.io/components/esp32_ble_tracker.html) component, and this config:
 
 ```
+ble_adv_handler:
+  id: ble_adv_handler_id
+
 esp32_ble_tracker:
   scan_parameters:
     interval: 15ms
     window: 15ms
   on_ble_advertise:
     then:
-      - lambda: 'ble_adv_static_handler->capture(x, true);'
-
-ble_adv_controller:
-  - id: my_controller
-    encoding: fanlamp_pro
+      - lambda: 'id(ble_adv_handler_id)->capture(x, true);'
 ```
 
 This will generate DEBUG logs such as those ones each time a raw advertising message is received:
@@ -202,16 +201,12 @@ For info here are the "known" commands already extracted from code and their cor
 | light_off    | 0xB2        | 0xA6        | 0xA6        | 0x11              | 0x11              |
 | light_dim    | 0xB5, arg1=0..3, arg2| 0xAD, arg0  | 0xAD, arg0  | N/A      | N/A               |
 | light_cct    | 0xB7, arg1=0..3, arg2| 0xAE, arg0  | 0xAE, arg0  | N/A      | N/A               |
-| light_wcolor | N/A         | N/A         | N/A         | 0x21, arg0 arg1   | 0x21, arg2, arg3  |
-| light_sec_on | N/A         | N/A         | N/A         | 0x12              | 0x12              |
-| light_sec_off| N/A         | N/A         | N/A         | 0x13              | 0x13              |
-| fan_on       | N/A         | N/A         | 0xD2        | 0x31, arg0=0      | 0x31, arg2=0      |
-| fan_off      | N/A         | N/A         | 0xD3        | 0x31, arg0=0      | 0x31, arg2=0      |
-| fan_speed    | N/A         | N/A         | 0xDB + (2*)speed | N/A          | N/A               |
-| fan_onoff_speed(3)  | N/A  | N/A         | 0xD2        | 0x31, arg0=0..3     | 0x31, arg2=0..3 |
-| fan_onoff_speed(6)  | N/A  | N/A         | 0xD2        | 0x32, arg0=0..6, arg1=6 | 0x31, arg2=0..6, arg1=0x20      |
-| fan_dir      | N/A         | N/A         | N/A         | 0x15, arg0=0..1   | 0x15, arg1=0..1   |
-| fan_osc      | N/A         | N/A         | N/A         | N/A               | 0x16, arg1=0..1   |
+| light_wcolor | 0xA1?       | 0xA8        | 0xA8        | 0x21, arg0 arg1   | 0x21, arg2, arg3  |
+| light_sec_on | 0xA6, arg1=1| 0xAF        | 0xAF        | 0x12              | 0x12              |
+| light_sec_off| 0xA6, arg1=2| 0xB0        | 0xB0        | 0x13              | 0x13              |
+| fan_onoff_speed | 0xD8/D2/D1/D0 | 0xD7/D6/D5/D4 | 0xD7/D6/D5/D4 | 0x32, arg0=0..6, arg1=6 | 0x31, arg2=0..6, arg1=0x20      |
+| fan_dir      | 0xDA / 0xD9 | 0xDA / 0xDB | 0xDA / 0xDB | 0x15, arg0=0..1   | 0x15, arg1=0..1   |
+| fan_osc      | N/A         | N/A         | N/A         | 0x16, arg1=0..1   | 0x16, arg1=0..1   |
 
 NOTE: the cmd code given are hexa codes, **you have to translate them into decimal for use in HA service**, use Windows Calculator in programmer mode.
 
@@ -274,7 +269,7 @@ Example custom commands:
   ```
   => there is a different cmd code for each speed, args are not used .........
   => cmd = 256 + (-34) = 222, in fact 256 + (-37) + speed_level
-  * custom command parameters: {cmd: 222, arg0: 0, arg1: 0, arg2: 0, arg3: 0}
+  * custom command parameters: {cmd: 222, arg0: 0, arg1: 0, arg2: 0, param: 0}
 
 
 ### FanLamp v1 (and v1a / v1b)
@@ -291,10 +286,9 @@ getmessage(cmd, LampData.mMasterControlAddr, index, value1, value2, LampConfig.U
 ```
 For the custom command, the mapping is the following:
 * cmd -> cmd
-* index -> index
 * value1 -> arg0
 * value2 -> arg1
-* unused: type, arg2, arg3
+* unused: arg2, param
 
 Example custom commands:
 * Fan Level to 3 for fan with index 0: 
@@ -304,7 +298,7 @@ Example custom commands:
         startSendData(getMessage(49, i, i2, i3));
     }
   ```
-  * custom command parameters: {type: 0, index: 0, cmd: 49, arg0: 3, arg1: 0, arg2: 0, arg3: 0}
+  * custom command parameters: {cmd: 49, arg0: 3, arg1: 0, arg2: 0, param: 0}
 * Fan Gear to 5 for fan with index 0:
   * software:
   ```
@@ -312,20 +306,18 @@ Example custom commands:
         startSendData(getMessage(50, LampData.mMasterControlAddr, i, i2, 6, LampConfig.UNK1, i3));
     }
   ```
-  * custom command parameters: {cmd: 50, arg0: 5, arg1: 6, arg2: 0, arg3: 0}.
+  * custom command parameters: {cmd: 50, arg0: 5, arg1: 6, arg2: 0, param: 0}.
 
 Note that the Fan Gear command is the same as Fan Level but it gives 6 levels instead of 3. Depend on the device to be controlled.
 
 ### FanLamp v2 (v2 and v3)
 * Source code [HERE](https://gist.github.com/aronsky/f433de654f008fedb5161e08eb32c33e) and [HERE](https://gist.github.com/aronsky/f2d8afab134d15f34256187a82a53a9c)
 * Commands are feeding the following data structure:
-  * blev2para.type -> type (but with no impact...);
-  * blev2para.group_index -> index;
   * blev2para.cmd -> cmd;
-  * blev2para.para[0] -> arg0;
-  * blev2para.para[1] -> arg1;
-  * blev2para.para[2] -> arg2;
-  * blev2para.para[3] -> arg3;
+  * blev2para.para[0] // unused;
+  * blev2para.para[1] -> param;
+  * blev2para.para[2] -> arg0;
+  * blev2para.para[3] -> arg1;
 
 Example custom commands:
 * Fan Level to 3 for fan with index 0: 
@@ -345,9 +337,9 @@ Example custom commands:
     ...
   }  
   ```
-  * custom command parameters: {cmd: 49, arg0: 0, arg1: 32, arg2: 3, arg3: 0}
+  * custom command parameters: {cmd: 49, arg0: 3, arg1: 0, arg2: 0, param: 32}
 
-Note that arg1 should take the 'generic_flag' value, but no idea how to build this one, this is where the '**guess**' happens: after 31 unsuccessful tries, the 32nd worked!
+Note that 'param' should take the 'generic_flag' value, but no idea how to build this one, this is where the '**guess**' happens: after 31 unsuccessful tries, the 32nd worked!
 
 # Component Implementation
 

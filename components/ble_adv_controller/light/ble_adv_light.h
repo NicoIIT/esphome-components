@@ -4,7 +4,7 @@
 #include "../ble_adv_controller.h"
 
 namespace esphome {
-namespace bleadvcontroller {
+namespace ble_adv_controller {
 
 class BleAdvLight : public light::LightOutput, public BleAdvEntity, public EntityBase
 {
@@ -28,7 +28,7 @@ class BleAdvLight : public light::LightOutput, public BleAdvEntity, public Entit
 
   light::LightTraits traits_;
   bool constant_brightness_;
-  BleAdvNumber number_min_brightness_;
+  ble_adv_handler::BleAdvNumber number_min_brightness_;
   bool split_dim_cct_;
 
   bool is_off_{true};
@@ -51,5 +51,5 @@ class BleAdvSecLight : public light::LightOutput, public BleAdvEntity, public En
   light::LightTraits traits_;
 };
 
-} //namespace bleadvcontroller
+} //namespace ble_adv_controller
 } //namespace esphome

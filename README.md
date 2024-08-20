@@ -13,6 +13,7 @@ Supported apps:
 * ApplianceSmart
 * Vmax smart
 * Zhi Jia
+* Zhi Guang
 * Other (Legacy), removed app from play store: 'FanLamp', 'ControlSwitch'
 
 Details can be found [here](components/ble_adv_controller/README.md).

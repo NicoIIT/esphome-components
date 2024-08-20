@@ -2,10 +2,14 @@
 
 #include "esphome/core/defines.h"
 #include "esphome/core/component.h"
+#include "esphome/core/entity_base.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/preferences.h"
 #ifdef USE_API
 #include "esphome/components/api/custom_api_device.h"
 #endif
+#include "esphome/components/select/select.h"
+#include "esphome/components/number/number.h"
 
 #include <esp_gap_ble_api.h>
 #include <vector>
@@ -19,13 +23,14 @@ namespace esp32_ble_tracker {
 }
 #endif
 
-namespace bleadvcontroller {
+namespace ble_adv_handler {
 
 enum CommandType {
   NOCMD = 0,
   PAIR = 1,
   UNPAIR = 2,
   CUSTOM = 3,
+  ALL_OFF = 4,
   LIGHT_ON = 13,
   LIGHT_OFF = 14,
   LIGHT_DIM = 15,
@@ -33,26 +38,9 @@ enum CommandType {
   LIGHT_WCOLOR = 17,
   LIGHT_SEC_ON = 18,
   LIGHT_SEC_OFF = 19,
-  FAN_ON = 30,
-  FAN_OFF = 31,
-  FAN_SPEED = 32,
   FAN_ONOFF_SPEED = 33,
   FAN_DIR = 34,
   FAN_OSC = 35,
-};
-
-/**
-  Command: 
-    structure to transport basic parameters for processing by encoders
- */
-class Command
-{
-public:
-  Command(CommandType cmd = CommandType::NOCMD): main_cmd_(cmd) {}
-
-  CommandType main_cmd_;
-  uint8_t cmd_{0};
-  uint8_t args_[4]{0};
 };
 
 /**
@@ -116,6 +104,33 @@ public:
   BleAdvProcess& operator=(BleAdvProcess&&) = default;
 } ;
 
+class BleAdvGenCmd
+{
+public:
+  BleAdvGenCmd(CommandType cmd = CommandType::NOCMD): cmd(cmd) {}
+  std::string str();
+
+  CommandType cmd;
+  uint8_t param = 0;
+  float args[2]{0};
+};
+
+class BleAdvEncCmd
+{
+public:
+  BleAdvEncCmd(uint8_t acmd = 0): cmd(acmd) {}
+  uint8_t cmd;
+  uint8_t param1 = 0;
+  uint8_t args[3]{0};
+};
+
+class CommandTranslator 
+{
+public:
+  virtual void g2e_cmd(const BleAdvGenCmd & gen_cmd, BleAdvEncCmd & enc_cmd) const = 0;
+  virtual void e2g_cmd(const BleAdvEncCmd & enc_cmd, BleAdvGenCmd & gen_cmd) const = 0;
+};
+
 /**
   BleAdvEncoder: 
     Base class for encoders, for registration in the BleAdvHandler
@@ -124,31 +139,32 @@ public:
 class BleAdvEncoder {
 public:
   BleAdvEncoder(const std::string & encoding, const std::string & variant): 
-      id_(encoding + " - " + variant), encoding_(encoding), variant_(variant) {}
+      id_(ID(encoding, variant)), encoding_(encoding), variant_(variant) {}
 
+  static constexpr const char * VARIANT_ALL = "All";
+  static std::string ID(const std::string & encoding, const std::string & variant) { return (encoding + " - " + variant); }
   const std::string & get_id() const { return this->id_; }
   const std::string & get_encoding() const { return this->encoding_; }
   const std::string & get_variant() const { return this->variant_; }
-  bool is_id(const std::string & ref_id) const { return ref_id == this->id_; }
-  bool is_id(const std::string & encoding, const std::string & variant) const { return (encoding == this->encoding_) && (variant == this->variant_); }
-  bool is_encoding(const std::string & encoding) const { return (encoding == this->encoding_); }
 
   void set_ble_param(uint8_t ad_flag, uint8_t adv_data_type){ this->ad_flag_ = ad_flag; this->adv_data_type_ = adv_data_type; }
-  bool is_ble_param(uint8_t ad_flag, uint8_t adv_data_type) { return this->ad_flag_ == ad_flag && this->adv_data_type_ == adv_data_type; }
+  bool is_ble_param(uint8_t ad_flag, uint8_t adv_data_type) const { return this->ad_flag_ == ad_flag && this->adv_data_type_ == adv_data_type; }
   void set_header(const std::vector< uint8_t > && header) { this->header_ = header; }
+  void set_translator(CommandTranslator * trans) { this->translator_ = trans; }
 
-  virtual std::vector< Command > translate(const Command & cmd, const ControllerParam_t & cont) = 0;
-  virtual void encode(std::vector< BleAdvParam > & params, Command &cmd, ControllerParam_t & cont);
-  virtual bool is_supported(const Command &cmd) ;
-  virtual bool decode(const BleAdvParam & packet, Command &cmd, ControllerParam_t & cont);
+  virtual void encode(std::vector< BleAdvParam > & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
+  virtual bool decode(const BleAdvParam & packet, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
+  virtual void translate_e2g(BleAdvGenCmd & gen_cmd, const BleAdvEncCmd & enc_cmd) const;
+  virtual void translate_g2e(std::vector< BleAdvEncCmd > & enc_cmds, const BleAdvGenCmd & gen_cmd) const;
+  virtual std::string to_str(const BleAdvEncCmd & enc_cmd) const = 0;
 
 protected:
-  virtual bool decode(uint8_t* buf, Command &cmd, ControllerParam_t & cont) { return false; };
-  virtual void encode(uint8_t* buf, Command &cmd, ControllerParam_t & cont) { };
+  virtual bool decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const = 0;
+  virtual void encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const = 0;
 
   // utils for encoding
-  void reverse_all(uint8_t* buf, uint8_t len);
-  void whiten(uint8_t *buf, size_t len, uint8_t seed);
+  void reverse_all(uint8_t* buf, uint8_t len) const;
+  void whiten(uint8_t *buf, size_t len, uint8_t seed) const;
 
   // encoder identifiers
   std::string id_;
@@ -162,29 +178,12 @@ protected:
   // Common parameters
   std::vector< uint8_t > header_;
   size_t len_{0};
+
+  // Translator
+  CommandTranslator * translator_ = nullptr;
 };
 
 #define ENSURE_EQ(param1, param2, ...) if ((param1) != (param2)) { ESP_LOGD(this->id_.c_str(), __VA_ARGS__); return false; }
-
-/**
-  BleAdvMultiEncoder:
-    Encode several messages at the same time with different encoders
- */
-class BleAdvMultiEncoder: public BleAdvEncoder
-{
-public:
-  BleAdvMultiEncoder(const std::string encoding): BleAdvEncoder(encoding, "All") {}
-  virtual void encode(std::vector< BleAdvParam > & params, Command &cmd, ControllerParam_t & cont) override;
-  virtual bool is_supported(const Command &cmd) override;
-  void add_encoder(BleAdvEncoder * encoder) { this->encoders_.push_back(encoder); }
-
-  // Not used
-  virtual std::vector< Command > translate(const Command & cmd, const ControllerParam_t & cont) { return std::vector< Command >(); };
-  virtual bool decode(const BleAdvParam & packet, Command &cmd, ControllerParam_t & cont) override { return false; }
-
-protected:
-  std::vector< BleAdvEncoder * > encoders_;
-};
 
 /**
   BleAdvHandler: Central class instanciated only ONCE
@@ -205,7 +204,6 @@ public:
   // Encoder registration and access
   void add_encoder(BleAdvEncoder * encoder);
   BleAdvEncoder * get_encoder(const std::string & id);
-  BleAdvEncoder * get_encoder(const std::string & encoding, const std::string & variant);
   std::vector<std::string> get_ids(const std::string & encoding);
 
   // Advertiser
@@ -249,5 +247,65 @@ protected:
   std::list< BleAdvParam > listen_packets_;
 };
 
-} //namespace bleadvcontroller
+
+//  Base class to define a dynamic Configuration
+template < class BaseEntity >
+class BleAdvDynConfig: public BaseEntity
+{
+public:
+  void init(const char * name, const StringRef & parent_name) {
+    // Due to the use of sh... StringRef, we are forced to keep a ref on the built string...
+    this->ref_name_ = std::string(parent_name) + " - " + std::string(name);
+    this->set_object_id(this->ref_name_.c_str());
+    this->set_name(this->ref_name_.c_str());
+    this->set_entity_category(EntityCategory::ENTITY_CATEGORY_CONFIG);
+    this->sub_init();
+    this->publish_state(this->state);
+  }
+
+  // register to App and restore from config / saved data
+  virtual void sub_init() = 0;
+
+protected:
+  std::string ref_name_;
+  ESPPreferenceObject rtc_{nullptr};
+};
+
+/**
+  BleAdvSelect: basic implementation of 'Select' to handle configuration choice from HA directly
+ */
+class BleAdvSelect: public BleAdvDynConfig < select::Select > {
+protected:
+  void control(const std::string &value) override;
+  void sub_init() override;
+};
+
+/**
+  BleAdvNumber: basic implementation of 'Number' to handle duration(s) choice from HA directly
+ */
+class BleAdvNumber: public BleAdvDynConfig < number::Number > {
+protected:
+  void control(float value) override;
+  void sub_init() override;
+};
+
+/**
+  Base Device class
+ */
+class BleAdvDevice: public EntityBase, public Parented < ble_adv_handler::BleAdvHandler >
+{
+public:
+  void set_forced_id(uint32_t forced_id) { this->params_.id_ = forced_id; }
+  void set_forced_id(const std::string & str_id) { this->params_.id_ = fnv1_hash(str_id); }
+  void set_index(uint8_t index) { this->params_.index_ = index; }
+  void set_encoding_and_variant(const std::string & encoding, const std::string & variant);
+  void refresh_encoder(std::string id, size_t index);
+
+protected:
+  ControllerParam_t params_;
+  BleAdvSelect select_encoding_;
+  std::vector< BleAdvEncoder *> encoders_;
+};
+
+} //namespace ble_adv_handler
 } //namespace esphome

@@ -1,57 +1,11 @@
 #include "ble_adv_controller.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
-#include "esphome/core/application.h"
 
 namespace esphome {
-namespace bleadvcontroller {
+namespace ble_adv_controller {
 
 static const char *TAG = "ble_adv_controller";
-
-void BleAdvSelect::control(const std::string &value) {
-  this->publish_state(value);
-  uint32_t hash_value = fnv1_hash(value);
-  this->rtc_.save(&hash_value);
-}
-
-void BleAdvSelect::sub_init() { 
-  App.register_select(this);
-  this->rtc_ = global_preferences->make_preference< uint32_t >(this->get_object_id_hash());
-  uint32_t restored;
-  if (this->rtc_.load(&restored)) {
-    for (auto & opt: this->traits.get_options()) {
-      if(fnv1_hash(opt) == restored) {
-        this->state = opt;
-        return;
-      }
-    }
-  }
-}
-
-void BleAdvNumber::control(float value) {
-  this->publish_state(value);
-  this->rtc_.save(&value);
-}
-
-void BleAdvNumber::sub_init() {
-  App.register_number(this);
-  this->rtc_ = global_preferences->make_preference< float >(this->get_object_id_hash());
-  float restored;
-  if (this->rtc_.load(&restored)) {
-    this->state = restored;
-  }
-}
-
-void BleAdvController::set_encoding_and_variant(const std::string & encoding, const std::string & variant) {
-  this->select_encoding_.traits.set_options(this->handler_->get_ids(encoding));
-  this->cur_encoder_ = this->handler_->get_encoder(encoding, variant);
-  this->select_encoding_.state = this->cur_encoder_->get_id();
-  this->select_encoding_.add_on_state_callback(std::bind(&BleAdvController::refresh_encoder, this, std::placeholders::_1, std::placeholders::_2));
-}
-
-void BleAdvController::refresh_encoder(std::string id, size_t index) {
-  this->cur_encoder_ = this->handler_->get_encoder(id);
-}
 
 void BleAdvController::set_min_tx_duration(int tx_duration, int min, int max, int step) {
   this->number_duration_.traits.set_min_value(min);
@@ -64,7 +18,7 @@ void BleAdvController::setup() {
 #ifdef USE_API
   register_service(&BleAdvController::on_pair, "pair_" + this->get_object_id());
   register_service(&BleAdvController::on_unpair, "unpair_" + this->get_object_id());
-  register_service(&BleAdvController::on_cmd, "cmd_" + this->get_object_id(), {"cmd", "arg0", "arg1", "arg2", "arg3"});
+  register_service(&BleAdvController::on_cmd, "cmd_" + this->get_object_id(), {"cmd", "param", "arg0", "arg1", "arg2"});
   register_service(&BleAdvController::on_raw_inject, "inject_raw_" + this->get_object_id(), {"raw"});
 #endif
   if (this->is_show_config()) {
@@ -85,23 +39,28 @@ void BleAdvController::dump_config() {
 
 #ifdef USE_API
 void BleAdvController::on_pair() { 
-  Command cmd(CommandType::PAIR);
+  BleAdvGenCmd cmd(CommandType::PAIR);
   this->enqueue(cmd);
 }
 
 void BleAdvController::on_unpair() {
-  Command cmd(CommandType::UNPAIR);
+  BleAdvGenCmd cmd(CommandType::UNPAIR);
   this->enqueue(cmd);
 }
 
-void BleAdvController::on_cmd(float cmd_type, float arg0, float arg1, float arg2, float arg3) {
-  Command cmd(CommandType::CUSTOM);
-  cmd.cmd_ = (uint8_t)cmd_type;
-  cmd.args_[0] = (uint8_t)arg0;
-  cmd.args_[1] = (uint8_t)arg1;
-  cmd.args_[2] = (uint8_t)arg2;
-  cmd.args_[3] = (uint8_t)arg3;
-  this->enqueue(cmd);
+void BleAdvController::on_cmd(float cmd_type, float param, float arg0, float arg1, float arg2) {
+  BleAdvEncCmd enc_cmd((uint8_t)cmd_type);
+  enc_cmd.param1 = (uint8_t)param;
+  enc_cmd.args[0] = (uint8_t)arg0;
+  enc_cmd.args[1] = (uint8_t)arg1;
+  enc_cmd.args[2] = (uint8_t)arg2;
+
+  // enqueue a new CUSTOM command and encode the buffer(s)
+  this->commands_.emplace_back(CommandType::CUSTOM);
+  this->increase_counter();
+  for (auto encoder : this->encoders_) {
+    encoder->encode(this->commands_.back().params_, enc_cmd, this->params_);
+  }
 }
 
 void BleAdvController::on_raw_inject(std::string raw) {
@@ -111,37 +70,34 @@ void BleAdvController::on_raw_inject(std::string raw) {
 }
 #endif
 
-bool BleAdvController::enqueue(Command &cmd) {
-  if (!this->cur_encoder_->is_supported(cmd)) {
-    ESP_LOGW(TAG, "Unsupported command received: %d. Aborted.", cmd.main_cmd_);
-    return false;
-  }
-
+void BleAdvController::increase_counter() {
   // Reset tx count if near the limit
-  if (this->params_.tx_count_ > 120) {
+  if (this->params_.tx_count_ > 126) {
     this->params_.tx_count_ = 0;
   }
+  this->params_.tx_count_++;
+}
 
-  // Remove any previous command of the same type in the queue, if not used for several purposes
-  if (cmd.main_cmd_ != CommandType::CUSTOM) {
-    uint8_t nb_rm = std::count_if(this->commands_.begin(), this->commands_.end(), [&](QueueItem& q){ return q.cmd_type_ == cmd.cmd_; });
-    if (nb_rm) {
-      ESP_LOGD(TAG, "Removing %d previous pending commands", nb_rm);
-      this->commands_.remove_if( [&](QueueItem& q){ return q.cmd_type_ == cmd.cmd_; } );
+bool BleAdvController::enqueue(BleAdvGenCmd &gen_cmd) {
+  // Remove any previous command of the same type in the queue
+  uint8_t nb_rm = std::count_if(this->commands_.begin(), this->commands_.end(), [&](QueueItem& q){ return q.cmd_type_ == gen_cmd.cmd; });
+  if (nb_rm) {
+    ESP_LOGD(TAG, "Removing %d previous pending commands", nb_rm);
+    this->commands_.remove_if( [&](QueueItem& q){ return q.cmd_type_ == gen_cmd.cmd; } );
+  }
+  
+  // enqueue the new command and encode the buffer(s)
+  this->commands_.emplace_back(gen_cmd.cmd);
+  this->increase_counter();
+  for (auto & encoder : this->encoders_) {
+    std::vector< BleAdvEncCmd > enc_cmds;
+    encoder->translate_g2e(enc_cmds, gen_cmd);
+    for (auto & enc_cmd: enc_cmds) {
+      encoder->encode(this->commands_.back().params_, enc_cmd, this->params_);
     }
   }
-
-  // enqueue the new command and encode the buffer(s)
-  this->commands_.emplace_back(cmd.main_cmd_);
-  this->cur_encoder_->encode(this->commands_.back().params_, cmd, this->params_);
   
-  // setup seq duration for each packet
-  bool use_seq_duration = (this->seq_duration_ > 0) && (this->seq_duration_ < this->get_min_tx_duration());
-  for (auto & param : this->commands_.back().params_) {
-    param.duration_ = use_seq_duration ? this->seq_duration_: this->get_min_tx_duration();
-  }
-  
-  return true;
+  return !this->commands_.back().params_.empty();
 }
 
 void BleAdvController::loop() {
@@ -150,8 +106,15 @@ void BleAdvController::loop() {
     // no on going command advertised by this controller, check if any to advertise
     if(!this->commands_.empty()) {
       QueueItem & item = this->commands_.front();
-      this->adv_id_ = this->handler_->add_to_advertiser(item.params_);
-      this->adv_start_time_ = now;
+      if (!item.params_.empty()) {
+        // setup seq duration for each packet
+        bool use_seq_duration = (this->seq_duration_ > 0) && (this->seq_duration_ < this->get_min_tx_duration());
+        for (auto & param : item.params_) {
+          param.duration_ = use_seq_duration ? this->seq_duration_: this->get_min_tx_duration();
+        }
+        this->adv_id_ = this->get_parent()->add_to_advertiser(item.params_);
+        this->adv_start_time_ = now;
+      }
       this->commands_.pop_front();
     }
   }
@@ -160,7 +123,7 @@ void BleAdvController::loop() {
     uint32_t duration = this->commands_.empty() ? this->max_tx_duration_ : this->number_duration_.state;
     if (now > this->adv_start_time_ + duration) {
       this->adv_start_time_ = 0;
-      this->handler_->remove_from_advertiser(this->adv_id_);
+      this->get_parent()->remove_from_advertiser(this->adv_id_);
     }
   }
 }
@@ -169,15 +132,16 @@ void BleAdvEntity::dump_config_base(const char * tag) {
   ESP_LOGCONFIG(tag, "  Controller '%s'", this->get_parent()->get_name().c_str());
 }
 
-void BleAdvEntity::command(CommandType cmd_type, const std::vector<uint8_t> &args) {
-  Command cmd(cmd_type);
-  std::copy(args.begin(), args.end(), cmd.args_);
-  this->get_parent()->enqueue(cmd);
+void BleAdvEntity::command(BleAdvGenCmd &gen_cmd) {
+  this->get_parent()->enqueue(gen_cmd);
 }
 
-void BleAdvEntity::command(CommandType cmd, uint8_t value1, uint8_t value2) {
-  this->command(cmd, {value1, value2});
+void BleAdvEntity::command(CommandType cmd_type, float value1, float value2) {
+  BleAdvGenCmd gen_cmd(cmd_type);
+  gen_cmd.args[0] = value1;
+  gen_cmd.args[1] = value2;
+  this->get_parent()->enqueue(gen_cmd);
 }
 
-} // namespace bleadvcontroller
+} // namespace ble_adv_controller
 } // namespace esphome

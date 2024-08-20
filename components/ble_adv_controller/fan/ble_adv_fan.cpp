@@ -3,7 +3,7 @@
 #include "esphome/components/ble_adv_controller/ble_adv_controller.h"
 
 namespace esphome {
-namespace bleadvcontroller {
+namespace ble_adv_controller {
 
 static const char *TAG = "ble_adv_fan";
 
@@ -39,24 +39,10 @@ void BleAdvFan::control(const fan::FanCall &call) {
     if (call.get_speed().has_value()) {
       this->speed = *call.get_speed();
     }
-    if (this->state) {
-      // Switch ON, always setting with SPEED
-      ESP_LOGD(TAG, "BleAdvFan::control - Setting ON with speed %d", this->speed);
-      if (this->get_parent()->is_supported(CommandType::FAN_ONOFF_SPEED)) {
-        this->command(CommandType::FAN_ONOFF_SPEED, this->speed, this->traits_.supported_speed_count());
-      } else {
-        this->command(CommandType::FAN_ON);
-        this->command(CommandType::FAN_SPEED, this->speed, this->traits_.supported_speed_count());
-      }
-    } else {
-      // Switch OFF
-      ESP_LOGD(TAG, "BleAdvFan::control - Setting OFF");
-      if (this->get_parent()->is_supported(CommandType::FAN_ONOFF_SPEED)) {
-        this->command(CommandType::FAN_ONOFF_SPEED, 0, this->traits_.supported_speed_count());
-      } else {
-        this->command(CommandType::FAN_OFF);
-      }
-    }
+    // Switch ON always setting with SPEED or OFF
+    ESP_LOGD(TAG, "BleAdvFan::control - Setting %s with speed %d", this->state ? "ON":"OFF", this->speed);
+    uint8_t eff_speed = (REF_SPEED * this->speed) / this->traits_.supported_speed_count();
+    this->command(CommandType::FAN_ONOFF_SPEED, this->state ? eff_speed : 0, REF_SPEED);
   }
 
   if (call.get_direction().has_value()) {
@@ -68,7 +54,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
   if (direction_refresh && this->traits_.supports_direction()) {
     bool isFwd = this->direction == fan::FanDirection::FORWARD;
     ESP_LOGD(TAG, "BleAdvFan::control - Setting direction %s", (isFwd ? "fwd":"rev"));
-    this->command(CommandType::FAN_DIR, isFwd);
+    this->command(CommandType::FAN_DIR, !isFwd);
   }
 
   if (call.get_oscillating().has_value()) {
@@ -85,5 +71,5 @@ void BleAdvFan::control(const fan::FanCall &call) {
   this->publish_state();
 }
 
-} // namespace bleadvcontroller
+} // namespace ble_adv_controller
 } // namespace esphome

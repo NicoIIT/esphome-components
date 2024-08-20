@@ -2,7 +2,7 @@
 #include "esphome/core/log.h"
 
 namespace esphome {
-namespace bleadvcontroller {
+namespace ble_adv_controller {
 
 static const char *TAG = "ble_adv_light";
 
@@ -72,7 +72,7 @@ void BleAdvLight::write_state(light::LightState *state) {
   this->brightness_ = updated_brf;
   this->warm_color_ = updated_ctf;
 
-  if(this->get_parent()->is_supported(CommandType::LIGHT_WCOLOR) && !this->split_dim_cct_) {
+  if(!this->split_dim_cct_) {
     light::LightColorValues eff_values = state->current_values;
     eff_values.set_brightness(updated_brf);
     float cwf, wwf;
@@ -82,15 +82,15 @@ void BleAdvLight::write_state(light::LightState *state) {
       eff_values.as_cwww(&cwf, &wwf, 0, this->constant_brightness_);
     }
     ESP_LOGD(TAG, "Updating Cold: %.0f%%, Warm: %.0f%%", cwf*100, wwf*100);
-    this->command(CommandType::LIGHT_WCOLOR, (uint8_t) (cwf*255), (uint8_t) (wwf*255));
+    this->command(CommandType::LIGHT_WCOLOR, cwf, wwf);
   } else {
     if (ct_diff != 0) {
       ESP_LOGD(TAG, "Updating warm color temperature: %.0f%%", updated_ctf*100);
-      this->command(CommandType::LIGHT_CCT, (uint8_t) (255*updated_ctf));
+      this->command(CommandType::LIGHT_CCT, updated_ctf);
     }
     if (br_diff != 0) {
       ESP_LOGD(TAG, "Updating brightness: %.0f%%", updated_brf*100);
-      this->command(CommandType::LIGHT_DIM, (uint8_t) (255*updated_brf));
+      this->command(CommandType::LIGHT_DIM, updated_brf);
     }
   }
 }
@@ -117,6 +117,6 @@ void BleAdvSecLight::write_state(light::LightState *state) {
   }
 }
 
-} // namespace bleadvcontroller
+} // namespace ble_adv_controller
 } // namespace esphome
 

@@ -101,6 +101,7 @@ ble_adv_controller:
   - id: my_controller
     # encoding:
     # 'zhijia', for 'Zhi Jia' app
+    # 'zhiguang', for 'Zhi Guang' app, same settings as 'zhijia'
     # 'fanlamp_pro', for 'FanLamp Pro' app or 'ApplianceSmart' App
     # 'lampsmart_pro', for 'LampSmart Pro' App, 'LampSmart Pro-Soft Lighting' App or 'Vmax smart' App
     # 'remote', for some of the remotes we know
@@ -137,11 +138,15 @@ ble_adv_controller:
     # example: 0xBFF62757
     # For ZhiJia, default to 0xC630B8 which was the value hard-coded in ble_adv_light component. Max 0xFFFFFF.
     # For FanLamp: default to 0, uses the hash id computed by esphome from the id/name of the controller
+    # Some variant may require only 2 bytes.
     forced_id: 0
     # index: a supplementary counter on the phone app to distinguish in between several devices
     # only usefull if you want to copy the phone app setup
     index: 0
     # show_config (default true): shows the dynamic configuration in the device info page in Home Automation
+    # WARN: when switching to false, the config entities do not disappear immediately
+    # as HA is keeping them for a long time just in case you want to keep history...
+    # To hide them immediately, deactivate them directly in HA.
     show_config: true
 
 light:
@@ -197,8 +202,16 @@ button:
     ble_adv_controller_id: my_controller
     name: Pair
     # cmd: the action to be executed when the button is pressed
-    # any of 'pair', 'unpair', 'custom', 'light_on', ...
+    # any of 'pair', 'unpair'
     cmd: pair
+  - platform: ble_adv_controller
+    ble_adv_controller_id: my_controller
+    name: Custom
+    # custom_cmd / args / param: the custom action code directly in the encoder format, see CUSTOM.md for more info
+    # exclusive with cmd
+    custom_cmd: 0x11
+    param: 0x00
+    args: [0,0]
 ```
 
 ## Good to know

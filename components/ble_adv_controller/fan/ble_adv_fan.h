@@ -4,7 +4,7 @@
 #include "../ble_adv_controller.h"
 
 namespace esphome {
-namespace bleadvcontroller {
+namespace ble_adv_controller {
 
 class BleAdvFan : public fan::Fan, public BleAdvEntity
 {
@@ -20,9 +20,10 @@ class BleAdvFan : public fan::Fan, public BleAdvEntity
   void set_forced_refresh_on_start(bool forced_refresh_on_start) { this->forced_refresh_on_start_ = forced_refresh_on_start; }
 
 protected:
+  static constexpr const size_t REF_SPEED = 6;
   fan::FanTraits traits_;
   bool forced_refresh_on_start_{true};
 };
 
-} //namespace bleadvcontroller
+} //namespace ble_adv_controller
 } //namespace esphome

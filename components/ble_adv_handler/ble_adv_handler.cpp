@@ -1,13 +1,14 @@
 #include "ble_adv_handler.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#include "esphome/core/application.h"
 
 #ifdef USE_ESP32_BLE_CLIENT
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
 #endif
 
 namespace esphome {
-namespace bleadvcontroller {
+namespace ble_adv_handler {
 
 static const char *TAG = "ble_adv_handler";
 
@@ -69,13 +70,72 @@ void BleAdvParam::set_data_len(size_t len) {
   this->len_ = len + 2 + (this->has_ad_flag() ? 3 : 0);
 }
 
-bool BleAdvEncoder::is_supported(const Command &cmd) {
-  ControllerParam_t cont;
-  auto cmds = this->translate(cmd, cont);
-  return !cmds.empty();
+std::string BleAdvGenCmd::str() {
+  char ret[100]{0};
+  size_t ind = 0;
+  switch(this->cmd) {
+    case CommandType::PAIR:
+      ind = std::sprintf(ret, "PAIR");
+      break;
+    case CommandType::UNPAIR:
+      ind = std::sprintf(ret, "UNPAIR");
+      break;
+    case CommandType::CUSTOM:
+      ind = std::sprintf(ret, "CUSTOM");
+      break;
+    case CommandType::ALL_OFF:
+      ind = std::sprintf(ret, "ALL_OFF");
+      break;
+    case CommandType::LIGHT_ON:
+      ind = std::sprintf(ret, "LIGHT_ON");
+      break;
+    case CommandType::LIGHT_OFF:
+      ind = std::sprintf(ret, "LIGHT_OFF");
+      break;
+    case CommandType::LIGHT_DIM:
+      ind = std::sprintf(ret, "LIGHT_DIM - %.0f%%", this->args[0] * 100);
+      break;
+    case CommandType::LIGHT_CCT:
+      ind = std::sprintf(ret, "LIGHT_CCT - %.0f%%", this->args[0] * 100);
+      break;
+    case CommandType::LIGHT_WCOLOR:
+      ind = std::sprintf(ret, "LIGHT_WCOLOR/%d - cold: %.0f%%, warm: %.0f%%", this->param, this->args[0] * 100, this->args[1] * 100);
+      break;
+    case CommandType::LIGHT_SEC_ON:
+      ind = std::sprintf(ret, "LIGHT_SEC_ON");
+      break;
+    case CommandType::LIGHT_SEC_OFF:
+      ind = std::sprintf(ret, "LIGHT_SEC_OFF");
+      break;
+    case CommandType::FAN_ONOFF_SPEED:
+      ind = std::sprintf(ret, "FAN_ONOFF_SPEED - %0.f/%0.f", this->args[0], this->args[1]);
+      break;
+    case CommandType::FAN_DIR:
+      ind = std::sprintf(ret, "FAN_DIR - %s", this->args[0] == 1 ? "Reverse" : "Forward");
+      break;
+    case CommandType::FAN_OSC:
+      ind = std::sprintf(ret, "FAN_OSC - %s", this->args[0] == 1 ? "ON": "OFF");
+      break;
+    default:
+      ind = std::sprintf(ret, "UNKNOWN - %d", this->cmd);
+      break;
+  }
+  return ret;
 }
 
-bool BleAdvEncoder::decode(const BleAdvParam & param, Command &cmd, ControllerParam_t & cont) {
+void BleAdvEncoder::translate_g2e(std::vector< BleAdvEncCmd > & enc_cmds, const BleAdvGenCmd & gen_cmd) const {
+  BleAdvEncCmd enc_cmd;
+  this->translator_->g2e_cmd(gen_cmd, enc_cmd);
+  if (enc_cmd.cmd != 0) {
+    enc_cmds.emplace_back(std::move(enc_cmd));
+  }
+}
+
+void BleAdvEncoder::translate_e2g(BleAdvGenCmd & gen_cmd, const BleAdvEncCmd & enc_cmd) const {
+  this->translator_->e2g_cmd(enc_cmd, gen_cmd);
+}
+
+bool BleAdvEncoder::decode(const BleAdvParam & param, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   // Check global len and header to discard most of encoders
   size_t len = param.get_data_len() - this->header_.size();
   const uint8_t * cbuf = param.get_const_data_buf();
@@ -85,29 +145,24 @@ bool BleAdvEncoder::decode(const BleAdvParam & param, Command &cmd, ControllerPa
   // copy the data to be decoded, not to alter it for other decoders
   uint8_t buf[MAX_PACKET_LEN]{0};
   std::copy(cbuf, cbuf + param.get_data_len(), buf);
-  return this->decode(buf + this->header_.size(), cmd, cont);
+  return this->decode(buf + this->header_.size(), enc_cmd, cont);
 }
 
-void BleAdvEncoder::encode(std::vector< BleAdvParam > & params, Command &cmd, ControllerParam_t & cont) {
-  auto cmds = (cmd.main_cmd_ == CommandType::CUSTOM) ? std::vector< Command >({cmd}) : this->translate(cmd, cont);
-  for (auto & acmd: cmds) {
-    cont.tx_count_++;
+void BleAdvEncoder::encode(std::vector< BleAdvParam > & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+  params.emplace_back();
+  BleAdvParam & param = params.back();
+  param.init_with_ble_param(this->ad_flag_, this->adv_data_type_);
+  std::copy(this->header_.begin(), this->header_.end(), param.get_data_buf());
+  uint8_t * buf = param.get_data_buf() + this->header_.size();
+  this->encode(buf, enc_cmd, cont);
 
-    params.emplace_back();
-    BleAdvParam & param = params.back();
-    param.init_with_ble_param(this->ad_flag_, this->adv_data_type_);
-    std::copy(this->header_.begin(), this->header_.end(), param.get_data_buf());
-    uint8_t * buf = param.get_data_buf() + this->header_.size();
+  ESP_LOGD(this->id_.c_str(), "UUID: '0x%lX', index: %d, tx: %d, enc: %s", 
+      cont.id_, cont.index_, cont.tx_count_, this->to_str(enc_cmd).c_str());
 
-    ESP_LOGD(this->id_.c_str(), "UUID: '0x%lX', index: %d, tx: %d, cmd: '0x%02X', args: [%d,%d,%d,%d]", 
-        cont.id_, cont.index_, cont.tx_count_, acmd.cmd_, acmd.args_[0], acmd.args_[1], acmd.args_[2], acmd.args_[3]);
-
-    this->encode(buf, acmd, cont);
-    param.set_data_len(this->len_ + this->header_.size());    
-  }
+  param.set_data_len(this->len_ + this->header_.size());    
 }
 
-void BleAdvEncoder::whiten(uint8_t *buf, size_t len, uint8_t seed) {
+void BleAdvEncoder::whiten(uint8_t *buf, size_t len, uint8_t seed) const {
   uint8_t r = seed;
   for (size_t i=0; i < len; i++) {
     uint8_t b = 0;
@@ -123,31 +178,13 @@ void BleAdvEncoder::whiten(uint8_t *buf, size_t len, uint8_t seed) {
   }
 }
 
-void BleAdvEncoder::reverse_all(uint8_t* buf, uint8_t len) {
+void BleAdvEncoder::reverse_all(uint8_t* buf, uint8_t len) const {
   for (size_t i = 0; i < len; ++i) {
     uint8_t & x = buf[i];
     x = ((x & 0x55) << 1) | ((x & 0xAA) >> 1);
     x = ((x & 0x33) << 2) | ((x & 0xCC) >> 2);
     x = ((x & 0x0F) << 4) | ((x & 0xF0) >> 4);
   }
-}
-
-void BleAdvMultiEncoder::encode(std::vector< BleAdvParam > & params, Command &cmd, ControllerParam_t & cont) {
-  uint8_t count = 0;
-  for(auto & encoder : this->encoders_) {
-    ControllerParam_t c_cont = cont; // Copy to avoid increasing counts for the same command
-    encoder->encode(params, cmd, c_cont);
-    count = std::max(c_cont.tx_count_, count);
-  }
-  cont.tx_count_ = count;
-}
-
-bool BleAdvMultiEncoder::is_supported(const Command &cmd) {
-  bool is_supported = false;
-  for(auto & encoder : this->encoders_) {
-    is_supported |= encoder->is_supported(cmd);
-  }
-  return is_supported;
 }
 
 void BleAdvHandler::setup() {
@@ -157,22 +194,12 @@ void BleAdvHandler::setup() {
 }
 
 void BleAdvHandler::add_encoder(BleAdvEncoder * encoder) { 
-  BleAdvMultiEncoder * enc_all = nullptr;
-  auto all_enc = std::find_if(this->encoders_.begin(), this->encoders_.end(), 
-                    [&](BleAdvEncoder * p){ return p->is_id(encoder->get_encoding(), "All"); });
-  if (all_enc == this->encoders_.end()) {
-    enc_all = new BleAdvMultiEncoder(encoder->get_encoding());
-    this->encoders_.push_back(enc_all);
-  } else {
-    enc_all = static_cast<BleAdvMultiEncoder*>(*all_enc);
-  }
   this->encoders_.push_back(encoder);
-  enc_all->add_encoder(encoder);
 }
 
 BleAdvEncoder * BleAdvHandler::get_encoder(const std::string & id) {
   for(auto & encoder : this->encoders_) {
-    if (encoder->is_id(id)) {
+    if (encoder->get_id() == id) {
       return encoder;
     }
   }
@@ -180,20 +207,11 @@ BleAdvEncoder * BleAdvHandler::get_encoder(const std::string & id) {
   return nullptr;
 }
 
-BleAdvEncoder * BleAdvHandler::get_encoder(const std::string & encoding, const std::string & variant) {
-  for(auto & encoder : this->encoders_) {
-    if (encoder->is_id(encoding, variant)) {
-      return encoder;
-    }
-  }
-  ESP_LOGE(TAG, "No Encoder with encoding: %s and variant: %s", encoding.c_str(), variant.c_str());
-  return nullptr;
-}
-
 std::vector<std::string> BleAdvHandler::get_ids(const std::string & encoding) {
   std::vector<std::string> ids;
+  ids.push_back(BleAdvEncoder::ID(encoding, BleAdvEncoder::VARIANT_ALL));
   for(auto & encoder : this->encoders_) {
-    if (encoder->is_encoding(encoding)) {
+    if (encoder->get_encoding() == encoding) {
       ids.push_back(encoder->get_id());
     }
   }
@@ -227,37 +245,42 @@ bool BleAdvHandler::identify_param(const BleAdvParam & param, bool ignore_ble_pa
       continue;
     }
     ControllerParam_t cont;
-    Command cmd(CommandType::CUSTOM);
-    if(encoder->decode(param, cmd, cont)) {
-      ESP_LOGI(encoder->get_id().c_str(), "Decoded OK - tx: %d, cmd: '0x%02X', Args: [%d,%d,%d,%d]",
-               cont.tx_count_, cmd.cmd_, cmd.args_[0], cmd.args_[1], cmd.args_[2], cmd.args_[3]);
+    BleAdvEncCmd enc_cmd;
+    if(encoder->decode(param, enc_cmd, cont)) {
+      BleAdvGenCmd gen_cmd;
+      encoder->translate_e2g(gen_cmd, enc_cmd);
+      ESP_LOGI(encoder->get_id().c_str(), "Decoded OK - tx: %d, gen: %s, enc: %s", 
+                cont.tx_count_, gen_cmd.str().c_str(), encoder->to_str(enc_cmd).c_str());
 
-      std::string config_str = "config: \nble_adv_controller:";
-      config_str += "\n  - id: my_controller_id";
-      config_str += "\n    encoding: %s";
-      config_str += "\n    variant: %s";
-      config_str += "\n    forced_id: 0x%X";
-      if (cont.index_ != 0) {
-        config_str += "\n    index: %d";
+      if (gen_cmd.cmd == CommandType::PAIR) {
+        std::string config_str = "config: \nble_adv_controller:";
+        config_str += "\n  - id: my_controller_id";
+        config_str += "\n    encoding: %s";
+        config_str += "\n    variant: %s";
+        config_str += "\n    forced_id: 0x%X";
+        if (cont.index_ != 0) {
+          config_str += "\n    index: %d";
+        }
+        ESP_LOGI(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_, cont.index_);
       }
-      ESP_LOGI(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_, cont.index_);
       
       // Re encoding with the same parameters to check if it gives the same output
       std::vector< BleAdvParam > params;
-      cont.tx_count_--; // as the encoder will increase it automatically
-      if(cmd.cmd_ == 0x28) {
-        // Force recomputation of Args by translate function for PAIR command, as part of encoding
-        cmd.main_cmd_ = CommandType::PAIR;
+      std::vector< BleAdvEncCmd > re_enc_cmds;
+      encoder->translate_g2e(re_enc_cmds, gen_cmd);
+      for (auto & re_enc_cmd: re_enc_cmds) {
+        encoder->encode(params, re_enc_cmd, cont);
+        BleAdvParam & fparam = params.back();
+        ESP_LOGD(TAG, "enc - %s", esphome::format_hex_pretty(fparam.get_full_buf(), fparam.get_full_len()).c_str());
+        if (std::equal(param.get_const_data_buf(), param.get_const_data_buf() + param.get_data_len(), fparam.get_data_buf())) {
+          ESP_LOGI(TAG, "Decoded / Re-encoded with NO DIFF");
+        } else {
+          ESP_LOGE(TAG, "DIFF after Decode / Re-encode");
+        }
       }
-      encoder->encode(params, cmd, cont);
-      BleAdvParam & fparam = params.back();
-      ESP_LOGD(TAG, "enc - %s", esphome::format_hex_pretty(fparam.get_full_buf(), fparam.get_full_len()).c_str());
-      if (std::equal(param.get_const_data_buf(), param.get_const_data_buf() + param.get_data_len(), fparam.get_data_buf())) {
-        ESP_LOGI(TAG, "Decoded / Re-encoded with NO DIFF");
-      } else {
-        ESP_LOGE(TAG, "DIFF after Decode / Re-encode");
+      if (re_enc_cmds.empty()){
+        ESP_LOGD(TAG, "No corresponding command to encode.");
       }
-
       return true;
     } 
   }
@@ -336,5 +359,61 @@ void BleAdvHandler::loop() {
   }
 }
 
-} // namespace bleadvcontroller
+void BleAdvSelect::control(const std::string &value) {
+  this->publish_state(value);
+  uint32_t hash_value = fnv1_hash(value);
+  this->rtc_.save(&hash_value);
+}
+
+void BleAdvSelect::sub_init() { 
+  App.register_select(this);
+  this->rtc_ = global_preferences->make_preference< uint32_t >(this->get_object_id_hash());
+  uint32_t restored;
+  if (this->rtc_.load(&restored)) {
+    for (auto & opt: this->traits.get_options()) {
+      if(fnv1_hash(opt) == restored) {
+        this->state = opt;
+        return;
+      }
+    }
+  }
+}
+
+void BleAdvNumber::control(float value) {
+  this->publish_state(value);
+  this->rtc_.save(&value);
+}
+
+void BleAdvNumber::sub_init() {
+  App.register_number(this);
+  this->rtc_ = global_preferences->make_preference< float >(this->get_object_id_hash());
+  float restored;
+  if (this->rtc_.load(&restored)) {
+    this->state = restored;
+  }
+}
+
+void BleAdvDevice::set_encoding_and_variant(const std::string & encoding, const std::string & variant) {
+  this->select_encoding_.traits.set_options(this->get_parent()->get_ids(encoding));
+  this->select_encoding_.state = BleAdvEncoder::ID(encoding, variant);
+  this->encoders_.clear();
+  this->encoders_.push_back(this->get_parent()->get_encoder(this->select_encoding_.state));
+  this->select_encoding_.add_on_state_callback(std::bind(&BleAdvDevice::refresh_encoder, this, std::placeholders::_1, std::placeholders::_2));
+}
+
+void BleAdvDevice::refresh_encoder(std::string id, size_t index) {
+  this->encoders_.clear();
+  if (index == 0) {
+    // "All" encoder selected, refresh from list, avoiding "All"
+    for (auto & aid : this->select_encoding_.traits.get_options()) {
+      if (aid != id) {
+        this->encoders_.push_back(this->get_parent()->get_encoder(aid));
+      }
+    }
+  } else {
+    this->encoders_.push_back(this->get_parent()->get_encoder(id));
+  }
+}
+
+} // namespace ble_adv_handler
 } // namespace esphome
