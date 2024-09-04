@@ -13,9 +13,14 @@ from .const import (
     CONF_BLE_ADV_ENCODING,
     CONF_BLE_ADV_FORCED_ID,
 )
+from esphome.components.esp32_ble import (
+    CONF_BLE_ID,
+    ESP32BLE,
+)
 
 AUTO_LOAD = ["esp32_ble", "select", "number"]
 DEPENDENCIES = ["esp32"]
+CONFLICTS_WITH = ["esp32_ble_tracker"]
 MULTI_CONF = False
 
 bleadvhandler_ns = cg.esphome_ns.namespace('ble_adv_handler')
@@ -28,6 +33,7 @@ FanLampEncoderV2 = bleadvhandler_ns.class_('FanLampEncoderV2')
 ZhijiaEncoderV0 = bleadvhandler_ns.class_('ZhijiaEncoderV0')
 ZhijiaEncoderV1 = bleadvhandler_ns.class_('ZhijiaEncoderV1')
 ZhijiaEncoderV2 = bleadvhandler_ns.class_('ZhijiaEncoderV2')
+RemoteEncoder = bleadvhandler_ns.class_('RemoteEncoder')
 
 CT = bleadvhandler_ns.enum('CommandType')
 BleAdvEncCmd = bleadvhandler_ns.class_('BleAdvEncCmd')
@@ -42,6 +48,14 @@ def multi_arg0(multi = 1):
     return { "raw_g2e": f"e.args[0] = (float){multi} * g.args[0];",
              "raw_e2g": f"g.args[0] = ((float)e.args[0]) / (float){multi};" }
 
+def param1_arg0():
+    return { "raw_g2e": f"e.param1 = (int)g.args[0] & 0xFF; e.args[0] = (int)g.args[0] >> 8;",
+             "raw_e2g": f"g.args[0] = e.param1 + e.args[0] * 256;" }
+
+def trunc_arg0():
+    return { "raw_g2e": f"e.args[0] = std::min((int)g.args[0], 0xFF);",
+             "raw_e2g": f"g.args[0] = e.args[0];" }
+
 def zhijia_v0_multi_args():
     return {"raw_g2e": f"uint16_t arg16 = 1000*g.args[0]; e.args[1] = (arg16 & 0xFF00) >> 8; e.args[2] = arg16 & 0x00FF;",
             "raw_e2g": f"g.args[0] = (float)((((uint16_t)e.args[1]) << 8) | e.args[2]) / 1000.f;" }
@@ -53,26 +67,32 @@ FanLampCommonTranslators = [
     trans_cmd(CT.PAIR, 0x28),
     trans_cmd(CT.UNPAIR, 0x45),
     trans_cmd(CT.ALL_OFF, 0x6F),
+    trans_cmd(CT.LIGHT_TOGGLE, 0x09),
     trans_cmd(CT.LIGHT_ON, 0x10),
     trans_cmd(CT.LIGHT_OFF, 0x11),
     trans_cmd(CT.LIGHT_SEC_ON, 0x12),
     trans_cmd(CT.LIGHT_SEC_OFF, 0x13),
     trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":0}) | multi_args(255), # standard
-    trans_cmd(CT.LIGHT_WCOLOR, 0x23, {"param":3, "args[0]":"0.1f", "args[1]":"0.1f"}), # night mode
-    trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":4}, {"param1": 0x24}), # K+
-    trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":5}, {"param1": 0x18}), # K-
-    trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":6}, {"param1": 0x14}), # B+
-    trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":7}, {"param1": 0x28}), # B-
-    trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":8}, {"param1": 0x40}) | multi_args(255), # standard, remote
+    trans_cmd(CT.LIGHT_WCOLOR, 0x21, {"param":1}, {"param1": 0x40}) | multi_args(255), # standard, remote
+    trans_cmd(CT.LIGHT_WCOLOR, 0x23, {"param":3, "args[0]":0, "args[1]":"0.1f"}), # night mode
+    trans_cmd(CT.LIGHT_CCT, 0x21, {"param":1}, {"param1": 0x24}), # K+
+    trans_cmd(CT.LIGHT_CCT, 0x21, {"param":2}, {"param1": 0x18}), # K-
+    trans_cmd(CT.LIGHT_DIM, 0x21, {"param":1}, {"param1": 0x14}), # B+
+    trans_cmd(CT.LIGHT_DIM, 0x21, {"param":2}, {"param1": 0x28}), # B-
+    trans_cmd(CT.FAN_OSC_TOGGLE, 0x33),
 ]
 
 ZhijiaV0Translator = [
     trans_cmd(CT.PAIR, 0xB4),
     trans_cmd(CT.UNPAIR, 0xB0),
+    trans_cmd(CT.TIMER, 0xD4, {"args[0]":60}),
+    trans_cmd(CT.TIMER, 0xD5, {"args[0]":120}),
+    trans_cmd(CT.TIMER, 0xD6, {"args[0]":240}),
+    trans_cmd(CT.TIMER, 0xD7, {"args[0]":480}),
     trans_cmd(CT.LIGHT_ON, 0xB3),
     trans_cmd(CT.LIGHT_OFF, 0xB2),
-    trans_cmd(CT.LIGHT_DIM, 0xB5) | zhijia_v0_multi_args(),
-    trans_cmd(CT.LIGHT_CCT, 0xB7) | zhijia_v0_multi_args(),
+    trans_cmd(CT.LIGHT_DIM, 0xB5, {"param":0}) | zhijia_v0_multi_args(),
+    trans_cmd(CT.LIGHT_CCT, 0xB7, {"param":0}) | zhijia_v0_multi_args(),
     trans_cmd(CT.LIGHT_SEC_ON, 0xA6, {}, {"args[0]":1}),
     trans_cmd(CT.LIGHT_SEC_OFF, 0xA6, {}, {"args[0]":2}),
     trans_cmd(CT.FAN_DIR, 0xD9, {"args[0]":0}),
@@ -94,10 +114,11 @@ ZhijiaV0Translator = [
 ZhijiaV1V2CommonTranslator = [
     trans_cmd(CT.PAIR, 0xA2),
     trans_cmd(CT.UNPAIR, 0xA3),
+    trans_cmd(CT.TIMER, 0xD9) | multi_args(1.0/60.0),
     trans_cmd(CT.LIGHT_ON, 0xA5),
     trans_cmd(CT.LIGHT_OFF, 0xA6),
-    trans_cmd(CT.LIGHT_DIM, 0xAD) | multi_args(250),
-    trans_cmd(CT.LIGHT_CCT, 0xAE) | multi_args(250),
+    trans_cmd(CT.LIGHT_DIM, 0xAD, {"param":0}) | multi_args(250),
+    trans_cmd(CT.LIGHT_CCT, 0xAE, {"param":0}) | multi_args(250),
     trans_cmd(CT.LIGHT_SEC_ON, 0xAF),
     trans_cmd(CT.LIGHT_SEC_OFF, 0xB0),
     trans_cmd(CT.FAN_DIR, 0xDB, {"args[0]":0}),
@@ -114,6 +135,7 @@ class TranslatorGenerator():
     translators = {
         str(FanLampEncoderV1): [
             *FanLampCommonTranslators,
+            trans_cmd(CT.TIMER, 0x51) | trunc_arg0(),
             trans_cmd(CT.FAN_DIR, 0x15) | multi_arg0(),
             trans_cmd(CT.FAN_OSC, 0x16) | multi_arg0(),
             trans_cmd(CT.FAN_ONOFF_SPEED, 0x31, {"args[1]": 0}) | multi_args(0.5),
@@ -121,6 +143,7 @@ class TranslatorGenerator():
         ],
         str(FanLampEncoderV2): [ 
             *FanLampCommonTranslators,
+            trans_cmd(CT.TIMER, 0x41) | param1_arg0(),
             trans_cmd(CT.FAN_DIR, 0x15, {"args[0]": 0}, {"param1": 0x00}),
             trans_cmd(CT.FAN_DIR, 0x15, {"args[0]": 1}, {"param1": 0x01}),
             trans_cmd(CT.FAN_OSC, 0x16, {"args[0]": 0}, {"param1": 0x00}),
@@ -131,6 +154,17 @@ class TranslatorGenerator():
         str(ZhijiaEncoderV0): ZhijiaV0Translator,
         str(ZhijiaEncoderV1): ZhijiaV1V2CommonTranslator,
         str(ZhijiaEncoderV2): ZhijiaV1V2CommonTranslator,
+        str(RemoteEncoder): [
+            trans_cmd(CT.LIGHT_ON, 0x08),
+            trans_cmd(CT.LIGHT_OFF, 0x06),
+            trans_cmd(CT.LIGHT_SEC_TOGGLE, 0x13),
+            trans_cmd(CT.LIGHT_WCOLOR, 0x10, {"param":3, "args[0]":0, "args[1]":"0.1f"}), # night mode
+            trans_cmd(CT.LIGHT_CCT, 0x0A, {"param":1}) | multi_args(), # K+ 
+            trans_cmd(CT.LIGHT_CCT, 0x0B, {"param":2}) | multi_args(), # K-
+            trans_cmd(CT.LIGHT_DIM, 0x02, {"param":1}) | multi_args(), # B+
+            trans_cmd(CT.LIGHT_DIM, 0x03, {"param":2}) | multi_args(), # B-
+            trans_cmd(CT.LIGHT_WCOLOR, 0x07, {"param":2}), # CCT / brightness Cycle
+        ],
     }
     created = {}
 
@@ -298,6 +332,13 @@ BLE_ADV_ENCODERS = {
                 "ble_param": [ 0x02, 0x16 ],
                 "header": [0xF0, 0x08],
             },
+            "v4": {
+                "class": RemoteEncoder,
+                "args": [ ],
+                "ble_param": [ 0x1A, 0xFF ],
+                "header": [0xF0, 0xFF],
+                # 02.01.1A.0B.FF.F0.FF.00.55.8F.24.04.08.65.79
+            }
         },
         "default_variant": "v3",
         "default_forced_id": 0,
@@ -381,20 +422,32 @@ DEVICE_BASE_CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
 )
 
 async def setup_ble_adv_device(var, config):
+    await cg.register_component(var, config)
     await cg.register_parented(var, config[CONF_BLE_ADV_HANDLER_ID])
     await setup_entity(var, config)
-    cg.add(var.set_encoding_and_variant(config[CONF_BLE_ADV_ENCODING], config[CONF_VARIANT]))
+    cg.add(var.init(config[CONF_BLE_ADV_ENCODING], config[CONF_VARIANT]))
     cg.add(var.set_index(config[CONF_INDEX]))
     if config[CONF_BLE_ADV_FORCED_ID] > 0:
         cg.add(var.set_forced_id(config[CONF_BLE_ADV_FORCED_ID]))
     else:
         cg.add(var.set_forced_id(config[CONF_ID].id))
 
+CONF_BLE_ADV_SCAN_ACTIVATED = "scan_activated"
+CONF_BLE_ADV_CHECK_REENCODING = "check_reencoding"
+CONF_BLE_ADV_LOG_RAW = "log_raw"
+CONF_BLE_ADV_LOG_COMMAND = "log_command"
+CONF_BLE_ADV_LOG_CONFIG = "log_config"
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(BleAdvHandler),
+        cv.GenerateID(CONF_BLE_ID): cv.use_id(ESP32BLE),
+        cv.Optional(CONF_BLE_ADV_SCAN_ACTIVATED, default=True): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_CHECK_REENCODING, default=False): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_LOG_RAW, default=False): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_LOG_COMMAND, default=False): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_LOG_CONFIG, default=False): cv.boolean,
     }),
     cv.only_on([PLATFORM_ESP32]),
 )
@@ -402,7 +455,6 @@ CONFIG_SCHEMA = cv.All(
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(var.set_setup_priority(300)) # start after Bluetooth
-    await cg.register_component(var, config)
     for encoding, params in BLE_ADV_ENCODERS.items():
         for variant, param_variant in params["variants"].items():
             if "class" in param_variant:
@@ -412,3 +464,10 @@ async def to_code(config):
                 cg.add(enc.set_header(param_variant["header"]))
                 cg.add(enc.set_translator(TranslatorGenerator.get_translator_instance(param_variant["class"])))
                 cg.add(var.add_encoder(enc))
+    await cg.register_component(var, config)
+    cg.add(var.set_scan_activated(config[CONF_BLE_ADV_SCAN_ACTIVATED]))
+    cg.add(var.set_check_reencoding(config[CONF_BLE_ADV_CHECK_REENCODING]))
+    cg.add(var.set_logging(config[CONF_BLE_ADV_LOG_RAW], config[CONF_BLE_ADV_LOG_COMMAND], config[CONF_BLE_ADV_LOG_CONFIG]))
+    parent = await cg.get_variable(config[CONF_BLE_ID])
+    cg.add(parent.register_gap_event_handler(var))
+    cg.add(var.set_parent(parent))

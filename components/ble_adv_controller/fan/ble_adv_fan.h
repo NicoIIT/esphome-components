@@ -13,6 +13,7 @@ class BleAdvFan : public fan::Fan, public BleAdvEntity
   fan::FanTraits get_traits() override { return this->traits_; }
   void setup() override;
   void control(const fan::FanCall &call) override;
+  void publish(const BleAdvGenCmd & gen_cmd) override;
 
   void set_speed_count(uint8_t speed_count) { this->traits_.set_supported_speed_count(speed_count); this->traits_.set_speed(speed_count > 0);}
   void set_direction_supported(bool use_direction) { this->traits_.set_direction(use_direction); }

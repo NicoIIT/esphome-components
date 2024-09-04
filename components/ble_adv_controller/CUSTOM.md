@@ -60,52 +60,7 @@ To build the Data section corresponding to a command, the encoding is done as fo
 * Whitening: to avoid the message to be mostly zeros
 
 # Capturing Advertising messages
-It can be usefull to capture the messages sent by a phone app or a remote already paired with the device you want to control, in order to extract some info such as the `identifier` for instance.
-
-This can be done quite 'easily' using the [ESPHome BLE Tracker](https://esphome.io/components/esp32_ble_tracker.html) component, and this config:
-
-```
-ble_adv_handler:
-  id: ble_adv_handler_id
-
-esp32_ble_tracker:
-  scan_parameters:
-    interval: 15ms
-    window: 15ms
-  on_ble_advertise:
-    then:
-      - lambda: 'id(ble_adv_handler_id)->capture(x, true);'
-```
-
-This will generate DEBUG logs such as those ones each time a raw advertising message is received:
-```
-[17:37:52][D][ble_adv_handler:297]: raw - 02.01.02.03.03.27.18.15.16.27.18.A8.01.51.3F.91.A2.00.E2.DC.38.AD.F0.64.03.07.00.00.00 (29)
-```
-
-It TRIES to capture EVERYTHING, meaning:
-* if you have existing Bluetooth devices doing BLE Advertising, you will also capture the logs of those devices...
-* it tries to capture as much as it can, but it can miss some of the messages, I would say it captures 75% of the messages
-
-Moreover, the phone app or the remotes are generating several advertising messages for a same command issued, for example the ***FanLamp Pro app is generating 6 distinct raw message for each action*** (2 commands for each variant with different AD Flag section...)
-
-For each message captured, it tries to decode it with each encoder available, and if one matches it produces the following:
-```
-[16:08:56][D][ble_adv_handler:268]: raw - 02.01.01.1B.03.F0.08.30.80.B8.F7.E1.27.DB.F4.95.C1.65.7D.A4.9F.67.F6.B6.30.34.8B.53.2B.38.A2 (31)
-[16:08:56][I][lampsmart_pro - v3:233]: Decoded OK - tx: 131, cmd: '0x11', Args: [0,0,0,0]
-[16:08:56][I][ble_adv_handler:243]: config: 
-[16:08:56]ble_adv_controller:
-[16:08:56]  - id: my_controller_id
-[16:08:56]    encoding: lampsmart_pro
-[16:08:56]    variant: v3
-[16:08:56]    forced_id: 0xB4555A3F
-[16:08:56][D][lampsmart_pro - v3:103]: UUID: '0xB4555A3F', index: 0, tx: 131, cmd: '0x11', args: [0,0,0,0]
-[16:08:56][D][ble_adv_handler:254]: enc - 02.01.19.1B.03.F0.08.30.80.B8.F7.E1.27.DB.F4.95.C1.65.7D.A4.9F.67.F6.B6.30.34.8B.53.2B.38.A2 (31)
-[16:08:56][I][ble_adv_handler:256]: Decoded / Re-encoded with NO DIFF
-```
-
-The config loggued gives you what iall the info you would need to setup a copy of the remote / phone app you listen!
-
-STILL if you listen to your phone app, you will end up with more or less 6 configs (and 3 removing the dupe, one for each variant), so you will have to find the relevant one as the controlled device probably listen to only ONE of those variants...
+see [ble_adv_handler](../ble_adv_handler/README.md)
 
 # Raw injection service
 If you captured a raw advertising message emitted by a phone app or a remote, just define a dummy controller and you can re inject the message as such with the following HA service:
@@ -139,30 +94,7 @@ light:
 The controller parameters forced_id / index / encoding / variant are ignored, but the `duration` and `max_duration` are available. The messages are also put in the sequencing queue and benefit from the centralized advertising of the component.
 
 # Raw decoding Service
-If you captured a raw advertising message emitted by a phone app or a remote, you can try to have it decoded by the existing decoders available in the app, using the service:
-```
-esphome: <device_name>_raw_decode
-```
-Just put the raw hexa string in the `raw` parameters, see previous section for the formats.
-You will see the result of the decoding in the logs of the application, as such:
-```
-[16:08:56][D][ble_adv_handler:268]: raw - 02.01.01.1B.03.F0.08.30.80.B8.F7.E1.27.DB.F4.95.C1.65.7D.A4.9F.67.F6.B6.30.34.8B.53.2B.38.A2 (31)
-[16:08:56][I][lampsmart_pro - v3:233]: Decoded OK - tx: 131, cmd: '0x11', Args: [0,0,0,0]
-[16:08:56][I][ble_adv_handler:243]: config: 
-[16:08:56]ble_adv_controller:
-[16:08:56]  - id: my_controller_id
-[16:08:56]    encoding: lampsmart_pro
-[16:08:56]    variant: v3
-[16:08:56]    forced_id: 0xB4555A3F
-[16:08:56][D][lampsmart_pro - v3:103]: UUID: '0xB4555A3F', index: 0, tx: 131, cmd: '0x11', args: [0,0,0,0]
-[16:08:56][D][ble_adv_handler:254]: enc - 02.01.19.1B.03.F0.08.30.80.B8.F7.E1.27.DB.F4.95.C1.65.7D.A4.9F.67.F6.B6.30.34.8B.53.2B.38.A2 (31)
-[16:08:56][I][ble_adv_handler:256]: Decoded / Re-encoded with NO DIFF
-```
-* raw: the hexa string injected
-* Decoded OK: the message was decoded by an encoder, here 'lampsmart_pro - v3'. Action Parameters are loggued. 
-* config: the config to setup for your controller to duplicate the source of the message. The defined controller will use the same identifier and will then be able to control the same device without any need to pair!
-* enc: the hexa string as it would be re-encoded by the encoder from the parameters extracted for the controller and the Action parameters.
-* the result of the comparison between what was injected and what was re encoded, to be sure the encoder would work OK! This comparison ignores the irrelevant differences in AD_Flag section (02.01.01 / 02.01.19).
+see [ble_adv_handler](../ble_adv_handler/README.md)
 
 # Custom Command Service
 if you are using 'api' component to communicate with HA, for each ble_adv_controller a HA service is available:
@@ -353,8 +285,8 @@ The whole process is controlled by the `BleAdvHandler`, which has a unique class
 
 Each device controlled has a corresponding instance of `BleAdvController` (configured by `ble_adv_controller`yaml section). This controller references the `BleAdvHandler` and is the only one to communicate with it. The controller also references its `BleAdvEncoder` type, which is the class in charge of building advertising messages.
 
-Each Home Assistant entity (button, light, fan) has a corresponding instance of `BleAdvEntity`, implemented by 
-`BleAdvButton`, `BleAdvLight` and `BleAdvFan`. Those entities are receiving the requests coming from Home Assistant.
+Each Home Assistant entity (light, fan) has a corresponding instance of `BleAdvEntity`, implemented by 
+`BleAdvLight` and `BleAdvFan`. Those entities are receiving the requests coming from Home Assistant.
 They are linked to their parent `BleAdvController`.
 
 ## The command flow

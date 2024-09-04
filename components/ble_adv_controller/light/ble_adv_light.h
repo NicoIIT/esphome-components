@@ -12,6 +12,8 @@ class BleAdvLight : public light::LightOutput, public BleAdvEntity, public Entit
   void setup() override;
   void dump_config() override;
 
+  void publish(const BleAdvGenCmd & gen_cmd) override;
+
   void set_traits(float cold_white_temperature, float warm_white_temperature);
   void set_constant_brightness(bool constant_brightness) { this->constant_brightness_ = constant_brightness; }
   void set_min_brightness(int min_brightness, int min, int max, int step);
@@ -19,8 +21,14 @@ class BleAdvLight : public light::LightOutput, public BleAdvEntity, public Entit
 
   float get_min_brightness() { return ((float)this->number_min_brightness_.state) / 100.0f; }
 
+  float get_ha_brightness(float device_brightness);
+  float get_device_brightness(float ha_brightness);
+  float get_ha_color_temperature(float device_color_temperature);
+  float get_device_color_temperature(float ha_color_temperature);
+
   void setup_state(light::LightState *state) override { this->state_ = state; };
-  void write_state(light::LightState *state) override;
+  void update_state(light::LightState *state) override;
+  void write_state(light::LightState *state) override {};
   light::LightTraits get_traits() override { return this->traits_; }
 
  protected:
@@ -41,9 +49,11 @@ class BleAdvSecLight : public light::LightOutput, public BleAdvEntity, public En
  public:
   void set_traits() { this->traits_.set_supported_color_modes({light::ColorMode::ON_OFF}); };
   void dump_config() override;
+  void publish(const BleAdvGenCmd & gen_cmd) override;
 
   void setup_state(light::LightState *state) override { this->state_ = state; };
-  void write_state(light::LightState *state) override;
+  void update_state(light::LightState *state) override;
+  void write_state(light::LightState *state) override {};
   light::LightTraits get_traits() override { return this->traits_; };
 
  protected:

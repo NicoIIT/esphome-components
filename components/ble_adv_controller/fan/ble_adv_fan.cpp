@@ -19,6 +19,33 @@ void BleAdvFan::setup() {
   }
 }
 
+void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
+  if (!gen_cmd.is_fan_cmd()) return;
+
+  fan::FanCall call = this->make_call();
+  if (gen_cmd.cmd == CommandType::FAN_ONOFF_SPEED) {
+    if (gen_cmd.args[0] == 0) {
+      call.set_state(false).perform();
+    } else {
+      call.set_speed(gen_cmd.args[0]);
+      call.set_state(true).perform();
+    }
+  } else if (!this->state) {
+    ESP_LOGD(TAG, "Change ignored as entity is OFF.");
+    return;
+  }
+  
+  if (gen_cmd.cmd == CommandType::FAN_DIR) {
+    call.set_direction((gen_cmd.args[0] == 0) ? fan::FanDirection::FORWARD : fan::FanDirection::REVERSE).perform();
+  } else if (gen_cmd.cmd == CommandType::FAN_DIR_TOGGLE) {
+    call.set_direction((this->direction == fan::FanDirection::REVERSE) ? fan::FanDirection::FORWARD : fan::FanDirection::REVERSE).perform();
+  } else if (gen_cmd.cmd == CommandType::FAN_OSC) {
+    call.set_oscillating(gen_cmd.args[0] != 0).perform();
+  } else if (gen_cmd.cmd == CommandType::FAN_OSC_TOGGLE) {
+    call.set_oscillating(!this->oscillating).perform();
+  }
+}
+
 /**
 On button ON / OFF pressed: only State ON or OFF received
 On Speed change: State and Speed received

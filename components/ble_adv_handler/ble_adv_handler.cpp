@@ -70,7 +70,13 @@ void BleAdvParam::set_data_len(size_t len) {
   this->len_ = len + 2 + (this->has_ad_flag() ? 3 : 0);
 }
 
-std::string BleAdvGenCmd::str() {
+bool BleAdvParam::is_data_equal(const BleAdvParam & comp) const{
+  return (comp.has_data() && this->has_data() 
+          && (this->get_data_len() == comp.get_data_len())
+          && std::equal(this->get_const_data_buf(), this->get_const_data_buf() + this->get_data_len(), comp.get_const_data_buf()));
+}
+
+std::string BleAdvGenCmd::str() const {
   char ret[100]{0};
   size_t ind = 0;
   switch(this->cmd) {
@@ -86,6 +92,9 @@ std::string BleAdvGenCmd::str() {
     case CommandType::ALL_OFF:
       ind = std::sprintf(ret, "ALL_OFF");
       break;
+    case CommandType::TIMER:
+      ind = std::sprintf(ret, "TIMER: - %0.f minutes", this->args[0]);
+      break;
     case CommandType::LIGHT_ON:
       ind = std::sprintf(ret, "LIGHT_ON");
       break;
@@ -93,10 +102,25 @@ std::string BleAdvGenCmd::str() {
       ind = std::sprintf(ret, "LIGHT_OFF");
       break;
     case CommandType::LIGHT_DIM:
-      ind = std::sprintf(ret, "LIGHT_DIM - %.0f%%", this->args[0] * 100);
+      if (this->param == 0) {
+        ind = std::sprintf(ret, "LIGHT_DIM - %.0f%%", this->args[0] * 100);
+      } else if (this->param == 1) {
+        ind = std::sprintf(ret, "LIGHT_DIM (+)");
+      } else if (this->param == 2) {
+        ind = std::sprintf(ret, "LIGHT_DIM (-)");
+      } 
       break;
     case CommandType::LIGHT_CCT:
-      ind = std::sprintf(ret, "LIGHT_CCT - %.0f%%", this->args[0] * 100);
+      if (this->param == 0) {
+        ind = std::sprintf(ret, "LIGHT_CCT - %.0f%%", this->args[0] * 100);
+      } else if (this->param == 1) {
+        ind = std::sprintf(ret, "LIGHT_CCT (+)");
+      } else if (this->param == 2) {
+        ind = std::sprintf(ret, "LIGHT_CCT (-)");
+      } 
+      break;
+    case CommandType::LIGHT_TOGGLE:
+      ind = std::sprintf(ret, "LIGHT_TOGGLE");
       break;
     case CommandType::LIGHT_WCOLOR:
       ind = std::sprintf(ret, "LIGHT_WCOLOR/%d - cold: %.0f%%, warm: %.0f%%", this->param, this->args[0] * 100, this->args[1] * 100);
@@ -107,14 +131,23 @@ std::string BleAdvGenCmd::str() {
     case CommandType::LIGHT_SEC_OFF:
       ind = std::sprintf(ret, "LIGHT_SEC_OFF");
       break;
+    case CommandType::LIGHT_SEC_TOGGLE:
+      ind = std::sprintf(ret, "LIGHT_SEC_TOGGLE");
+      break;
     case CommandType::FAN_ONOFF_SPEED:
       ind = std::sprintf(ret, "FAN_ONOFF_SPEED - %0.f/%0.f", this->args[0], this->args[1]);
       break;
     case CommandType::FAN_DIR:
       ind = std::sprintf(ret, "FAN_DIR - %s", this->args[0] == 1 ? "Reverse" : "Forward");
       break;
+    case CommandType::FAN_DIR_TOGGLE:
+      ind = std::sprintf(ret, "FAN_DIR_TOGGLE");
+      break;
     case CommandType::FAN_OSC:
       ind = std::sprintf(ret, "FAN_OSC - %s", this->args[0] == 1 ? "ON": "OFF");
+      break;
+    case CommandType::FAN_OSC_TOGGLE:
+      ind = std::sprintf(ret, "FAN_OSC_TOGGLE");
       break;
     default:
       ind = std::sprintf(ret, "UNKNOWN - %d", this->cmd);
@@ -148,7 +181,7 @@ bool BleAdvEncoder::decode(const BleAdvParam & param, BleAdvEncCmd & enc_cmd, Co
   return this->decode(buf + this->header_.size(), enc_cmd, cont);
 }
 
-void BleAdvEncoder::encode(std::vector< BleAdvParam > & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+void BleAdvEncoder::encode(BleAdvParams & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   params.emplace_back();
   BleAdvParam & param = params.back();
   param.init_with_ble_param(this->ad_flag_, this->adv_data_type_);
@@ -190,7 +223,9 @@ void BleAdvEncoder::reverse_all(uint8_t* buf, uint8_t len) const {
 void BleAdvHandler::setup() {
 #ifdef USE_API
   register_service(&BleAdvHandler::on_raw_decode, "raw_decode", {"raw"});
+  register_service(&BleAdvHandler::on_raw_listen, "raw_listen", {"raw"});
 #endif
+  this->scan_result_lock_ = xSemaphoreCreateMutex();
 }
 
 void BleAdvHandler::add_encoder(BleAdvEncoder * encoder) { 
@@ -218,7 +253,7 @@ std::vector<std::string> BleAdvHandler::get_ids(const std::string & encoding) {
   return ids;
 }
 
-uint16_t BleAdvHandler::add_to_advertiser(std::vector< BleAdvParam > & params) {
+uint16_t BleAdvHandler::add_to_advertiser(BleAdvParams & params) {
   uint32_t msg_id = ++this->id_count;
   for (auto & param : params) {
     this->packets_.emplace_back(BleAdvProcess(msg_id, std::move(param)));
@@ -239,49 +274,53 @@ void BleAdvHandler::remove_from_advertiser(uint16_t msg_id) {
 }
 
 // try to identify the relevant encoder
-bool BleAdvHandler::identify_param(const BleAdvParam & param, bool ignore_ble_param) {
+bool BleAdvHandler::handle_raw_param(BleAdvParam & param, bool publish) {
+  if (this->log_raw_) {
+    ESP_LOGD(TAG, "raw - %s", esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
+  }
   for(auto & encoder : this->encoders_) {
-    if (!ignore_ble_param && !encoder->is_ble_param(param.get_ad_flag(), param.get_data_type())) {
-      continue;
-    }
     ControllerParam_t cont;
     BleAdvEncCmd enc_cmd;
     if(encoder->decode(param, enc_cmd, cont)) {
       BleAdvGenCmd gen_cmd;
       encoder->translate_e2g(gen_cmd, enc_cmd);
-      ESP_LOGI(encoder->get_id().c_str(), "Decoded OK - tx: %d, gen: %s, enc: %s", 
+      if (this->log_command_) {
+        ESP_LOGD(encoder->get_id().c_str(), "Decoded OK - tx: %d, gen: %s, enc: %s", 
                 cont.tx_count_, gen_cmd.str().c_str(), encoder->to_str(enc_cmd).c_str());
-
-      if (gen_cmd.cmd == CommandType::PAIR) {
-        std::string config_str = "config: \nble_adv_controller:";
-        config_str += "\n  - id: my_controller_id";
-        config_str += "\n    encoding: %s";
-        config_str += "\n    variant: %s";
-        config_str += "\n    forced_id: 0x%X";
-        if (cont.index_ != 0) {
-          config_str += "\n    index: %d";
+      }
+      for (auto & device: this->devices_) {
+        if (publish && device->is_elligible(encoder->get_id(), cont)) {
+          device->publish(gen_cmd, false);
         }
-        ESP_LOGI(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_, cont.index_);
+      }
+      if (this->log_config_) {
+        std::string config_str = "Configuration Parameters:";
+        config_str += "\n  encoding: %s";
+        config_str += "\n  variant: %s";
+        config_str += "\n  forced_id: 0x%X";
+        config_str += "\n  index: %d";
+        ESP_LOGD(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_, cont.index_);
       }
       
-      // Re encoding with the same parameters to check if it gives the same output
-      std::vector< BleAdvParam > params;
-      std::vector< BleAdvEncCmd > re_enc_cmds;
-      encoder->translate_g2e(re_enc_cmds, gen_cmd);
-      for (auto & re_enc_cmd: re_enc_cmds) {
-        encoder->encode(params, re_enc_cmd, cont);
-        BleAdvParam & fparam = params.back();
-        ESP_LOGD(TAG, "enc - %s", esphome::format_hex_pretty(fparam.get_full_buf(), fparam.get_full_len()).c_str());
-        if (std::equal(param.get_const_data_buf(), param.get_const_data_buf() + param.get_data_len(), fparam.get_data_buf())) {
-          ESP_LOGI(TAG, "Decoded / Re-encoded with NO DIFF");
-        } else {
-          ESP_LOGE(TAG, "DIFF after Decode / Re-encode");
+      if (this->check_reencoding_) {
+        // Re encoding with the same parameters to check if it gives the same output
+        BleAdvParams params;
+        std::vector< BleAdvEncCmd > re_enc_cmds;
+        encoder->translate_g2e(re_enc_cmds, gen_cmd);
+        for (auto & re_enc_cmd: re_enc_cmds) {
+          encoder->encode(params, re_enc_cmd, cont);
+          BleAdvParam & fparam = params.back();
+          ESP_LOGD(TAG, "enc - %s", esphome::format_hex_pretty(fparam.get_full_buf(), fparam.get_full_len()).c_str());
+          if (std::equal(param.get_const_data_buf(), param.get_const_data_buf() + param.get_data_len(), fparam.get_data_buf())) {
+            ESP_LOGI(TAG, "Decoded / Re-encoded with NO DIFF");
+          } else {
+            ESP_LOGE(TAG, "DIFF after Decode / Re-encode");
+          }
+        }
+        if (re_enc_cmds.empty()){
+          ESP_LOGD(TAG, "No corresponding command to encode.");
         }
       }
-      if (re_enc_cmds.empty()){
-        ESP_LOGD(TAG, "No corresponding command to encode.");
-      }
-      return true;
     } 
   }
   return false;
@@ -291,44 +330,66 @@ bool BleAdvHandler::identify_param(const BleAdvParam & param, bool ignore_ble_pa
 void BleAdvHandler::on_raw_decode(std::string raw) {
   BleAdvParam param;
   param.from_hex_string(raw);
-  ESP_LOGD(TAG, "raw - %s", esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
-  this->identify_param(param, true);
+  this->handle_raw_param(param, false);
 }
-#endif
-
-#ifdef USE_ESP32_BLE_CLIENT
-/* Basic class inheriting esp32_ble_tracker::ESPBTDevice in order to access 
-    protected attribute 'scan_result_' containing raw advertisement
-*/
-class HackESPBTDevice: public esp32_ble_tracker::ESPBTDevice {
-public:
-  void get_raw_packet(BleAdvParam & param) const {
-    param.from_raw(this->scan_result_.ble_adv, this->scan_result_.adv_data_len);
-  }
-};
-
-void BleAdvHandler::capture(const esp32_ble_tracker::ESPBTDevice & device, bool ignore_ble_param, uint16_t rem_time) {
-  // Clean-up expired packets
-  this->listen_packets_.remove_if( [&](BleAdvParam & p){ return p.duration_ < millis(); } );
-
-  // Read raw advertised packets
+void BleAdvHandler::on_raw_listen(std::string raw) {
   BleAdvParam param;
-  const HackESPBTDevice * hack_device = reinterpret_cast< const HackESPBTDevice * >(&device);
-  hack_device->get_raw_packet(param);
-  if (!param.has_data()) return;
-
-  // Check if not already received in the last 300s
-  auto idx = std::find(this->listen_packets_.begin(), this->listen_packets_.end(), param);
-  if (idx == this->listen_packets_.end()) {
-    ESP_LOGD(TAG, "raw - %s", esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
-    param.duration_ = millis() + (uint32_t)rem_time * 1000;
-    this->identify_param(param, ignore_ble_param);
-    this->listen_packets_.emplace_back(std::move(param));
-  }
+  param.from_hex_string(raw);
+  this->handle_raw_param(param, true);
 }
 #endif
 
 void BleAdvHandler::loop() {
+  // prevent any action if ble stack not ready, and stop scan if started
+  if (!this->get_parent()->is_active()) {
+    if (this->scan_started_) {
+      this->scan_started_ = false;
+      esp_err_t err = esp_ble_gap_stop_scanning();
+      if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ble_gap_stop_scanning failed: %d", err);
+      }
+    }
+    return;
+  }
+
+  // Setup and Start scan if needed
+  if (!this->scan_started_ && this->scan_activated_) {
+    esp_err_t err = esp_ble_gap_set_scan_params(&this->scan_params_);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "esp_ble_gap_set_scan_params failed: %d", err);
+    } else {
+      err = esp_ble_gap_start_scanning(0);
+      if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ble_gap_start_scanning failed: %d", err);
+      } else {
+        this->scan_started_ = true;
+      }
+    }
+  }
+
+  // Cleanup expired packets
+  this->processed_packets_.remove_if( [&](BleAdvParam & p){ return p.duration_ < millis(); } );
+
+  // swap packet list to further process it outside of the lock
+  std::list< BleAdvParam > new_packets;
+  if (xSemaphoreTake(this->scan_result_lock_, 5L / portTICK_PERIOD_MS)) {
+    std::swap(this->new_packets_, new_packets);
+    xSemaphoreGive(this->scan_result_lock_);
+  } else {
+    ESP_LOGW(TAG, "loop - failed to take lock");
+  }
+
+  // handle new packets
+  for (auto & param: new_packets) {
+    auto idx = std::find_if(this->processed_packets_.begin(), this->processed_packets_.end(),
+                              [&](BleAdvParam & p){ return (p == param) || p.is_data_equal(param); });
+    if (idx == this->processed_packets_.end()) {
+      this->handle_raw_param(param, true);
+      this->processed_packets_.emplace_back(std::move(param));
+    }
+  }
+
+  // Process advertizing
   if (this->adv_stop_time_ == 0) {
     // No packet is being advertised, process with clean-up IF already processed once and requested for removal
     this->packets_.remove_if([&](BleAdvProcess & p){ return p.processed_once_ && p.to_be_removed_; } );
@@ -355,6 +416,20 @@ void BleAdvHandler::loop() {
         this->packets_.emplace_back(std::move(this->packets_.front()));
         this->packets_.pop_front();
       }
+    }
+  }
+}
+
+void BleAdvHandler::gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
+  if (event == ESP_GAP_BLE_SCAN_RESULT_EVT) {
+    BleAdvParam packet;
+    packet.from_raw(param->scan_rst.ble_adv, param->scan_rst.adv_data_len);
+    packet.duration_ = millis() + 60 * 1000;
+    if(xSemaphoreTake(this->scan_result_lock_, 5L / portTICK_PERIOD_MS)) {
+      this->new_packets_.emplace_back(std::move(packet));
+      xSemaphoreGive(this->scan_result_lock_);
+    } else {
+      ESP_LOGW(TAG, "evt - failed to take lock");
     }
   }
 }
@@ -393,7 +468,8 @@ void BleAdvNumber::sub_init() {
   }
 }
 
-void BleAdvDevice::set_encoding_and_variant(const std::string & encoding, const std::string & variant) {
+void BleAdvDevice::init(const std::string & encoding, const std::string & variant) {
+  this->get_parent()->register_device(this);
   this->select_encoding_.traits.set_options(this->get_parent()->get_ids(encoding));
   this->select_encoding_.state = BleAdvEncoder::ID(encoding, variant);
   this->encoders_.clear();
@@ -413,6 +489,11 @@ void BleAdvDevice::refresh_encoder(std::string id, size_t index) {
   } else {
     this->encoders_.push_back(this->get_parent()->get_encoder(id));
   }
+}
+
+bool BleAdvDevice::is_elligible(const std::string & enc_id, const ControllerParam_t & cont) {
+  return (this->encoders_.size() == 1) && (this->encoders_.front()->get_id() == enc_id) 
+              && (cont.id_ == this->params_.id_) && (cont.index_ == this->params_.index_);
 }
 
 } // namespace ble_adv_handler

@@ -5,11 +5,14 @@
 #include "esphome/core/entity_base.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
+#include "esphome/components/esp32_ble/ble.h"
 #ifdef USE_API
 #include "esphome/components/api/custom_api_device.h"
 #endif
 #include "esphome/components/select/select.h"
 #include "esphome/components/number/number.h"
+
+#include <freertos/semphr.h>
 
 #include <esp_gap_ble_api.h>
 #include <vector>
@@ -17,30 +20,33 @@
 
 namespace esphome {
 
-#ifdef USE_ESP32_BLE_CLIENT
-namespace esp32_ble_tracker {
-  class ESPBTDevice;
-}
-#endif
-
 namespace ble_adv_handler {
 
 enum CommandType {
   NOCMD = 0,
+  // Controller handled commands: 1 -> 10
   PAIR = 1,
   UNPAIR = 2,
   CUSTOM = 3,
   ALL_OFF = 4,
-  LIGHT_ON = 13,
-  LIGHT_OFF = 14,
-  LIGHT_DIM = 15,
-  LIGHT_CCT = 16,
-  LIGHT_WCOLOR = 17,
-  LIGHT_SEC_ON = 18,
-  LIGHT_SEC_OFF = 19,
+  TIMER = 5,
+  // Light Commands: 11 -> 20
+  LIGHT_ON = 11,
+  LIGHT_OFF = 12,
+  LIGHT_DIM = 13,
+  LIGHT_CCT = 14,
+  LIGHT_WCOLOR = 15,
+  LIGHT_TOGGLE = 16,
+  // Secondary Light Commands: 21 -> 30
+  LIGHT_SEC_ON = 21,
+  LIGHT_SEC_OFF = 22,
+  LIGHT_SEC_TOGGLE = 23,
+  // Fan Commands: 31 -> 40
   FAN_ONOFF_SPEED = 33,
   FAN_DIR = 34,
   FAN_OSC = 35,
+  FAN_DIR_TOGGLE = 36,
+  FAN_OSC_TOGGLE = 37,
 };
 
 /**
@@ -79,7 +85,8 @@ public:
   uint8_t * get_full_buf() { return this->buf_; }
   uint8_t get_full_len() { return this->len_; }
 
-  bool operator==(const BleAdvParam & comp) { return std::equal(comp.buf_, comp.buf_ + MAX_PACKET_LEN, this->buf_); }
+  bool is_data_equal(const BleAdvParam & comp) const;
+  bool operator==(const BleAdvParam & comp) const { return std::equal(comp.buf_, comp.buf_ + MAX_PACKET_LEN, this->buf_); }
 
   uint32_t duration_{100};
 
@@ -89,6 +96,8 @@ protected:
   size_t ad_flag_index_{MAX_PACKET_LEN};
   size_t data_index_{MAX_PACKET_LEN};
 };
+
+using BleAdvParams = std::vector< ble_adv_handler::BleAdvParam >;
 
 class BleAdvProcess
 {
@@ -108,7 +117,12 @@ class BleAdvGenCmd
 {
 public:
   BleAdvGenCmd(CommandType cmd = CommandType::NOCMD): cmd(cmd) {}
-  std::string str();
+  std::string str() const;
+
+  bool is_controller_cmd() const { return (this->cmd <= 10); }
+  bool is_light_cmd() const { return (this->cmd > 10) && (this->cmd <= 20); }
+  bool is_sec_light_cmd() const { return (this->cmd > 20) && (this->cmd <= 30); }
+  bool is_fan_cmd() const { return (this->cmd > 30) && (this->cmd <= 40); }
 
   CommandType cmd;
   uint8_t param = 0;
@@ -152,7 +166,7 @@ public:
   void set_header(const std::vector< uint8_t > && header) { this->header_ = header; }
   void set_translator(CommandTranslator * trans) { this->translator_ = trans; }
 
-  virtual void encode(std::vector< BleAdvParam > & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
+  virtual void encode(BleAdvParams & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
   virtual bool decode(const BleAdvParam & packet, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
   virtual void translate_e2g(BleAdvGenCmd & gen_cmd, const BleAdvEncCmd & enc_cmd) const;
   virtual void translate_g2e(std::vector< BleAdvEncCmd > & enc_cmds, const BleAdvGenCmd & gen_cmd) const;
@@ -184,16 +198,21 @@ protected:
 };
 
 #define ENSURE_EQ(param1, param2, ...) if ((param1) != (param2)) { ESP_LOGD(this->id_.c_str(), __VA_ARGS__); return false; }
+class BleAdvDevice;
 
 /**
   BleAdvHandler: Central class instanciated only ONCE
   It owns the list of registered encoders and their simplified access, to be used by Controllers.
   It owns the centralized Advertiser allowing to advertise multiple messages at the same time 
     with handling of prioritization and parallel send when possible
+  It owns the centralized listener dispatching the listened / decoded commands
  */
-class BleAdvHandler: public Component
+class BleAdvHandler: 
+      public Component, 
+      public esp32_ble::GAPEventHandler, 
+      public Parented<esp32_ble::ESP32BLE>
 #ifdef USE_API
-  , public api::CustomAPIDevice
+    , public api::CustomAPIDevice
 #endif
 {
 public:
@@ -201,31 +220,41 @@ public:
   void setup() override;
   void loop() override;
 
+  // Options
+  void set_logging(bool raw, bool cmd, bool config) { this->log_raw_ = raw; this->log_command_ = cmd; this->log_config_ = config; }
+  void set_check_reencoding(bool check) { this->check_reencoding_ = check; }
+  void set_scan_activated(bool scan_activated) { this->scan_activated_ = scan_activated; }
+
   // Encoder registration and access
   void add_encoder(BleAdvEncoder * encoder);
   BleAdvEncoder * get_encoder(const std::string & id);
   std::vector<std::string> get_ids(const std::string & encoding);
 
   // Advertiser
-  uint16_t add_to_advertiser(std::vector< BleAdvParam > & params);
+  uint16_t add_to_advertiser(BleAdvParams & params);
   void remove_from_advertiser(uint16_t msg_id);
 
-  // identify which encoder is relevant for the param, decode and log Action and Controller parameters
-  bool identify_param(const BleAdvParam & param, bool ignore_ble_param);
+  // Children devices handling
+  void register_device(BleAdvDevice * device) { this->devices_.push_back(device); }
 
-  // Listener
-#ifdef USE_ESP32_BLE_CLIENT
-  void capture(const esp32_ble_tracker::ESPBTDevice & device, bool ignore_ble_param = true, uint16_t rem_time = 60);
-#endif
+  // identify which encoder is relevant for the param, decode and either:
+  //  - log Action and Controller parameters
+  //  - publish the decoded command to devices
+  bool handle_raw_param(BleAdvParam & param, bool ignore_ble_param);
 
 #ifdef USE_API
-  // HA service to decode
+  // HA service to decode / simulate listening
   void on_raw_decode(std::string raw);
+  void on_raw_listen(std::string raw);
 #endif
 
 protected:
   // ref to registered encoders
   std::vector< BleAdvEncoder * > encoders_;
+
+  /**
+    Performing ADV
+   */
 
   // packets being advertised
   std::list< BleAdvProcess > packets_;
@@ -243,8 +272,37 @@ protected:
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
   };
 
-  // Packets already captured once
-  std::list< BleAdvParam > listen_packets_;
+  /**
+    Listening to ADV
+   */
+  void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
+  bool scan_started_{false};
+  SemaphoreHandle_t scan_result_lock_;
+  
+  esp_ble_scan_params_t scan_params_ = {
+    .scan_type = BLE_SCAN_TYPE_PASSIVE,
+    .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
+    .scan_filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
+    .scan_interval = 0x10,
+    .scan_window = 0x10,
+    .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE,
+  };
+
+  // Logging parameters
+  bool log_raw_{false};
+  bool log_command_{false};
+  bool log_config_{false};
+
+  // validation/listening parameters
+  bool check_reencoding_{false};
+  bool scan_activated_{false};
+
+  // Packets listened / already captured once
+  std::list< BleAdvParam > new_packets_;
+  std::list< BleAdvParam > processed_packets_;
+
+  // children devices listening
+  std::vector< BleAdvDevice * > devices_;
 };
 
 
@@ -292,14 +350,20 @@ protected:
 /**
   Base Device class
  */
-class BleAdvDevice: public EntityBase, public Parented < ble_adv_handler::BleAdvHandler >
+class BleAdvDevice: public Component, public EntityBase, public Parented < BleAdvHandler >
+#ifdef USE_API
+  , public api::CustomAPIDevice
+#endif
 {
 public:
   void set_forced_id(uint32_t forced_id) { this->params_.id_ = forced_id; }
   void set_forced_id(const std::string & str_id) { this->params_.id_ = fnv1_hash(str_id); }
   void set_index(uint8_t index) { this->params_.index_ = index; }
-  void set_encoding_and_variant(const std::string & encoding, const std::string & variant);
+  void init(const std::string & encoding, const std::string & variant);
   void refresh_encoder(std::string id, size_t index);
+
+  bool is_elligible(const std::string & enc_id, const ControllerParam_t & cont);
+  virtual void publish(const BleAdvGenCmd & gen_cmd, bool apply_command) = 0;
 
 protected:
   ControllerParam_t params_;
