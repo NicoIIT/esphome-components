@@ -138,7 +138,7 @@ class TranslatorGenerator():
             trans_cmd(CT.TIMER, 0x51) | trunc_arg0(),
             trans_cmd(CT.FAN_DIR, 0x15) | multi_arg0(),
             trans_cmd(CT.FAN_OSC, 0x16) | multi_arg0(),
-            trans_cmd(CT.FAN_ONOFF_SPEED, 0x31, {"args[1]": 0}) | multi_args(0.5),
+            trans_cmd(CT.FAN_ONOFF_SPEED, 0x31, {"args[1]": 0}) | multi_args(),
             trans_cmd(CT.FAN_ONOFF_SPEED, 0x32, {"args[1]": 6}) | multi_args(),
         ],
         str(FanLampEncoderV2): [ 
@@ -148,7 +148,7 @@ class TranslatorGenerator():
             trans_cmd(CT.FAN_DIR, 0x15, {"args[0]": 1}, {"param1": 0x01}),
             trans_cmd(CT.FAN_OSC, 0x16, {"args[0]": 0}, {"param1": 0x00}),
             trans_cmd(CT.FAN_OSC, 0x16, {"args[0]": 1}, {"param1": 0x01}),
-            trans_cmd(CT.FAN_ONOFF_SPEED, 0x31, {"args[1]": 0}, {"param1": 0x00}) | multi_arg0(0.5),
+            trans_cmd(CT.FAN_ONOFF_SPEED, 0x31, {"args[1]": 0}, {"param1": 0x00}) | multi_arg0(),
             trans_cmd(CT.FAN_ONOFF_SPEED, 0x31, {"args[1]": 6}, {"param1": 0x20}) | multi_arg0(),
         ],
         str(ZhijiaEncoderV0): ZhijiaV0Translator,
@@ -332,6 +332,12 @@ BLE_ADV_ENCODERS = {
                 "ble_param": [ 0x02, 0x16 ],
                 "header": [0xF0, 0x08],
             },
+            "v31": {
+                "class": FanLampEncoderV2,
+                "args": [ [0x10, 0x00, 0x56], 0x0100, True ],
+                "ble_param": [ 0x02, 0x16 ],
+                "header": [0xF0, 0x08],
+            },
             "v4": {
                 "class": RemoteEncoder,
                 "args": [ ],
@@ -437,6 +443,12 @@ CONF_BLE_ADV_CHECK_REENCODING = "check_reencoding"
 CONF_BLE_ADV_LOG_RAW = "log_raw"
 CONF_BLE_ADV_LOG_COMMAND = "log_command"
 CONF_BLE_ADV_LOG_CONFIG = "log_config"
+CONF_BLE_ADV_TX_POWER = "tx_power"
+
+enum_tx_power = cg.global_ns.enum('esp_power_level_t')
+CONF_TX_LEVELS = { 3: enum_tx_power.ESP_PWR_LVL_P3,
+                   6: enum_tx_power.ESP_PWR_LVL_P6,
+                   9: enum_tx_power.ESP_PWR_LVL_P9,}
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -448,6 +460,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_BLE_ADV_LOG_RAW, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_LOG_COMMAND, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_LOG_CONFIG, default=False): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_TX_POWER, default=3): cv.one_of(*CONF_TX_LEVELS.keys()),
     }),
     cv.only_on([PLATFORM_ESP32]),
 )
@@ -468,6 +481,7 @@ async def to_code(config):
     cg.add(var.set_scan_activated(config[CONF_BLE_ADV_SCAN_ACTIVATED]))
     cg.add(var.set_check_reencoding(config[CONF_BLE_ADV_CHECK_REENCODING]))
     cg.add(var.set_logging(config[CONF_BLE_ADV_LOG_RAW], config[CONF_BLE_ADV_LOG_COMMAND], config[CONF_BLE_ADV_LOG_CONFIG]))
+    cg.add(var.set_tx_power(CONF_TX_LEVELS[config[CONF_BLE_ADV_TX_POWER]]))
     parent = await cg.get_variable(config[CONF_BLE_ID])
     cg.add(parent.register_gap_event_handler(var))
     cg.add(var.set_parent(parent))

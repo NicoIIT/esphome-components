@@ -68,8 +68,8 @@ void BleAdvFan::control(const fan::FanCall &call) {
     }
     // Switch ON always setting with SPEED or OFF
     ESP_LOGD(TAG, "BleAdvFan::control - Setting %s with speed %d", this->state ? "ON":"OFF", this->speed);
-    uint8_t eff_speed = (REF_SPEED * this->speed) / this->traits_.supported_speed_count();
-    this->command(CommandType::FAN_ONOFF_SPEED, this->state ? eff_speed : 0, REF_SPEED);
+    this->command(CommandType::FAN_ONOFF_SPEED, this->state ? this->speed : 0, 
+                  (this->traits_.supported_speed_count() == REF_SPEED) ? REF_SPEED : 0);
   }
 
   if (call.get_direction().has_value()) {

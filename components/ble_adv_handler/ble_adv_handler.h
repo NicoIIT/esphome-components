@@ -224,6 +224,7 @@ public:
   void set_logging(bool raw, bool cmd, bool config) { this->log_raw_ = raw; this->log_command_ = cmd; this->log_config_ = config; }
   void set_check_reencoding(bool check) { this->check_reencoding_ = check; }
   void set_scan_activated(bool scan_activated) { this->scan_activated_ = scan_activated; }
+  void set_tx_power(esp_power_level_t tx_power) { this->tx_power_ = tx_power; }
 
   // Encoder registration and access
   void add_encoder(BleAdvEncoder * encoder);
@@ -271,6 +272,8 @@ protected:
     .channel_map = ADV_CHNL_ALL,
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
   };
+
+  esp_power_level_t tx_power_ = ESP_PWR_LVL_P3;
 
   /**
     Listening to ADV

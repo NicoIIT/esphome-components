@@ -396,6 +396,7 @@ void BleAdvHandler::loop() {
     // if packets to be advertised, advertise the front one
     if (!this->packets_.empty()) {
       BleAdvParam & packet = this->packets_.front().param_;
+      ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, this->tx_power_));
       ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_config_adv_data_raw(packet.get_full_buf(), packet.get_full_len()));
       ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_start_advertising(&(this->adv_params_)));
       this->adv_stop_time_ = millis() + this->packets_.front().param_.duration_;
