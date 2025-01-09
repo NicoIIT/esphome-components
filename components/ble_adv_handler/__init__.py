@@ -307,7 +307,7 @@ BLE_ADV_ENCODERS = {
             },
             "v2": {
                 "class": ZhijiaEncoderV2,
-                "args": [ [0x19, 0x01, 0x10] ],
+                "args": [ [0x20, 0x03, 0x05] ],
                 "max_forced_id": 0xFFFFFF,
                 "ble_param": [ 0x1A, 0xFF ],
                 "header": [ 0x22, 0x9D ],
@@ -443,12 +443,7 @@ CONF_BLE_ADV_CHECK_REENCODING = "check_reencoding"
 CONF_BLE_ADV_LOG_RAW = "log_raw"
 CONF_BLE_ADV_LOG_COMMAND = "log_command"
 CONF_BLE_ADV_LOG_CONFIG = "log_config"
-CONF_BLE_ADV_TX_POWER = "tx_power"
-
-enum_tx_power = cg.global_ns.enum('esp_power_level_t')
-CONF_TX_LEVELS = { 3: enum_tx_power.ESP_PWR_LVL_P3,
-                   6: enum_tx_power.ESP_PWR_LVL_P6,
-                   9: enum_tx_power.ESP_PWR_LVL_P9,}
+CONF_BLE_ADV_USE_MAX_TX_POWER = "use_max_tx_power"
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -460,7 +455,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_BLE_ADV_LOG_RAW, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_LOG_COMMAND, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_LOG_CONFIG, default=False): cv.boolean,
-        cv.Optional(CONF_BLE_ADV_TX_POWER, default=3): cv.one_of(*CONF_TX_LEVELS.keys()),
+        cv.Optional(CONF_BLE_ADV_USE_MAX_TX_POWER, default=False): cv.boolean,
     }),
     cv.only_on([PLATFORM_ESP32]),
 )
@@ -481,7 +476,7 @@ async def to_code(config):
     cg.add(var.set_scan_activated(config[CONF_BLE_ADV_SCAN_ACTIVATED]))
     cg.add(var.set_check_reencoding(config[CONF_BLE_ADV_CHECK_REENCODING]))
     cg.add(var.set_logging(config[CONF_BLE_ADV_LOG_RAW], config[CONF_BLE_ADV_LOG_COMMAND], config[CONF_BLE_ADV_LOG_CONFIG]))
-    cg.add(var.set_tx_power(CONF_TX_LEVELS[config[CONF_BLE_ADV_TX_POWER]]))
+    cg.add(var.set_use_max_tx_power(config[CONF_BLE_ADV_USE_MAX_TX_POWER]))
     parent = await cg.get_variable(config[CONF_BLE_ID])
     cg.add(parent.register_gap_event_handler(var))
     cg.add(var.set_parent(parent))

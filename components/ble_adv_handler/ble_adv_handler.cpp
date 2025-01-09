@@ -339,6 +339,30 @@ void BleAdvHandler::on_raw_listen(std::string raw) {
 }
 #endif
 
+void BleAdvHandler::setup_max_tx_power() {
+  // The standard interfaces for esp32 are limited to ESP_PWR_LVL_P9, whereas some other interfaces for ESP32-C2 / C3 / ..
+  // are able to go up to ESP_PWR_LVL_P20.
+  // This function will simply try to setup the max value by increasing by 1 each time, and checking if it gives an error
+  if (this->max_tx_power_setup_done_ || !this->use_max_tx_power_ ) {
+    return;
+  }
+
+  esp_power_level_t lev_init = esp_ble_tx_power_get(ESP_BLE_PWR_TYPE_ADV);
+  ESP_LOGD(TAG, "Advertising TX Power enum value (NOT dBm) before max setup: %d", lev_init);
+
+  esp_err_t ret_code = ESP_OK;
+  esp_power_level_t lev_code = ESP_PWR_LVL_P9;
+  while( (ret_code == ESP_OK) && (lev_code < ESP_PWR_LVL_INVALID )) {
+    ret_code = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, lev_code);
+    lev_code = (esp_power_level_t)( (uint8_t)(lev_code + 1));
+  }
+
+  esp_power_level_t lev_final = esp_ble_tx_power_get(ESP_BLE_PWR_TYPE_ADV);
+  ESP_LOGD(TAG, "Advertising TX Power enum value (NOT dBm) after max setup: %d", lev_final);
+
+  this->max_tx_power_setup_done_ = true;
+}
+
 void BleAdvHandler::loop() {
   // prevent any action if ble stack not ready, and stop scan if started
   if (!this->get_parent()->is_active()) {
@@ -396,7 +420,7 @@ void BleAdvHandler::loop() {
     // if packets to be advertised, advertise the front one
     if (!this->packets_.empty()) {
       BleAdvParam & packet = this->packets_.front().param_;
-      ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, this->tx_power_));
+      this->setup_max_tx_power();
       ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_config_adv_data_raw(packet.get_full_buf(), packet.get_full_len()));
       ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ble_gap_start_advertising(&(this->adv_params_)));
       this->adv_stop_time_ = millis() + this->packets_.front().param_.duration_;

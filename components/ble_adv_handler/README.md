@@ -14,7 +14,7 @@ The following variables are available:
 - **log_raw** (Optional, Default: False): On each new raw BLE ADV message received, log it.
 - **log_command** (Optional, Default: False): On each ble adv message decoded, log the decoded command.
 - **log_config** (Optional, Default: False): On each ble adv message decoded, log the config used for the successful decoding.
-- **tx_power** (Optional, Default: 3, Possible values: 3 / 6 / 9): The TX Power in dBm for the Advertising stack, as defined in Espressif [doc](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/controller_vhci.html#_CPPv417esp_power_level_t). Increase it if your ESP32 is far from your device and have difficulties to communicate with it.
+- **use_max_tx_power** (Optional, Default: False): Try to use the max TX Power for the Advertising stack, as defined in Espressif [doc](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/controller_vhci.html#_CPPv417esp_power_level_t). Setup to 'true' if your ESP32 is far from your device and have difficulties to communicate with it.
 
 ## Listening to traffic
 The following configuration allows you to listen to traffic and to log:
