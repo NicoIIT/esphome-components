@@ -352,7 +352,7 @@ void BleAdvHandler::setup_max_tx_power() {
 
   esp_err_t ret_code = ESP_OK;
   esp_power_level_t lev_code = ESP_PWR_LVL_P9;
-  while( (ret_code == ESP_OK) && (lev_code < ESP_PWR_LVL_INVALID )) {
+  while( (ret_code == ESP_OK) && (lev_code < 0xFF)) {
     ret_code = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, lev_code);
     lev_code = (esp_power_level_t)( (uint8_t)(lev_code + 1));
   }
