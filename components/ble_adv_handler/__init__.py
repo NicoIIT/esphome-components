@@ -40,6 +40,9 @@ ZhijiaEncoderV0 = bleadvhandler_ns.class_('ZhijiaEncoderV0')
 ZhijiaEncoderV1 = bleadvhandler_ns.class_('ZhijiaEncoderV1')
 ZhijiaEncoderV2 = bleadvhandler_ns.class_('ZhijiaEncoderV2')
 RemoteEncoder = bleadvhandler_ns.class_('RemoteEncoder')
+ZhimeiEncoderV0 = bleadvhandler_ns.class_('ZhimeiEncoderV0')
+ZhimeiEncoderV1 = bleadvhandler_ns.class_('ZhimeiEncoderV1')
+ZhimeiEncoderV2 = bleadvhandler_ns.class_('ZhimeiEncoderV2')
 
 CT = bleadvhandler_ns.enum('CommandType')
 BleAdvEncCmd = bleadvhandler_ns.class_('BleAdvEncCmd')
@@ -47,8 +50,8 @@ BleAdvGenCmd = bleadvhandler_ns.class_('BleAdvGenCmd')
 CommandTranslator = bleadvhandler_ns.class_('CommandTranslator')
 
 def multi_args(multi = 1):
-    return { "raw_g2e": f"e.args[0] = (float){multi} * g.args[0]; e.args[1] = (float){multi} * g.args[1];",
-             "raw_e2g": f"g.args[0] = ((float)e.args[0]) / (float){multi}; g.args[1] = ((float)e.args[1]) / (float){multi};" }
+    return { "raw_g2e": f"e.args[0] = (float){multi} * g.args[0]; e.args[1] = (float){multi} * g.args[1]; e.args[2] = (float){multi} * g.args[2];",
+             "raw_e2g": f"g.args[0] = ((float)e.args[0]) / (float){multi}; g.args[1] = ((float)e.args[1]) / (float){multi}; g.args[2] = ((float)e.args[2]) / (float){multi};" }
 
 def multi_arg0(multi = 1):
     return { "raw_g2e": f"e.args[0] = (float){multi} * g.args[0];",
@@ -65,6 +68,18 @@ def trunc_arg0():
 def zhijia_v0_multi_args():
     return {"raw_g2e": f"uint16_t arg16 = 1000*g.args[0]; e.args[1] = (arg16 & 0xFF00) >> 8; e.args[2] = arg16 & 0x00FF;",
             "raw_e2g": f"g.args[0] = (float)((((uint16_t)e.args[1]) << 8) | e.args[2]) / 1000.f;" }
+
+def zhijia_v0_multi_args_reverse():
+    return {"raw_g2e": f"uint16_t arg16 = 1000*(1.0f - g.args[0]); e.args[1] = (arg16 & 0xFF00) >> 8; e.args[2] = arg16 & 0x00FF;",
+            "raw_e2g": f"g.args[0] = 1.0f - ((float)((((uint16_t)e.args[1]) << 8) | e.args[2]) / 1000.f);" }
+
+def zhimei_timer():
+    return { "raw_g2e": f"e.args[0] = (uint8_t)((int) g.args[0] / 60); e.args[1] = (int)g.args[0] % 60; ",
+             "raw_e2g": f"g.args[0] = e.args[0] * 60 + e.args[1];" }
+
+def fanlamp_rgb():
+    return { "raw_g2e": f"e.param1 = (uint8_t)(g.args[0] * 255); e.args[0] = (uint8_t)(g.args[1] * 255); e.args[1] = (uint8_t)(g.args[2] * 255); ",
+             "raw_e2g": f"g.args[0] = ((float)e.param1) / (255.f); g.args[1] = ((float)e.args[0]) / (255.f); g.args[2] = ((float)e.args[1]) / (255.f); " }
 
 def trans_cmd(gcmd, ecmd, gsupp = {}, esupp = {}):
     return {"g": { "cmd": gcmd } | gsupp, "e": { "cmd" : ecmd } | esupp}
@@ -99,8 +114,8 @@ ZhijiaV0Translator = [
     trans_cmd(CT.LIGHT_OFF, 0xB2),
     trans_cmd(CT.LIGHT_DIM, 0xB5, {"param":0}) | zhijia_v0_multi_args(),
     trans_cmd(CT.LIGHT_CCT, 0xB7, {"param":0}) | zhijia_v0_multi_args(),
-    trans_cmd(CT.LIGHT_SEC_ON, 0xA6, {}, {"args[0]":1}),
-    trans_cmd(CT.LIGHT_SEC_OFF, 0xA6, {}, {"args[0]":2}),
+    trans_cmd(CT.LIGHT_SEC_ON, 0xA6, {}, {"args[0]":2}),
+    trans_cmd(CT.LIGHT_SEC_OFF, 0xA6, {}, {"args[0]":1}),
     trans_cmd(CT.FAN_DIR, 0xD9, {"args[0]":0}),
     trans_cmd(CT.FAN_DIR, 0xDA, {"args[0]":1}),
     trans_cmd(CT.FAN_ONOFF_SPEED, 0xD8, {"args[0]":0, "args[1]": 6}),
@@ -137,6 +152,30 @@ ZhijiaV1V2CommonTranslator = [
     trans_cmd(CT.LIGHT_WCOLOR, 0xA7, {"param":3 , "args[0]":"0.1f", "args[1]":"0.1f"}, {"args[0]":25, "args[1]":25}),
 ]
 
+ZhimeiCommonTranslator = [
+    trans_cmd(CT.UNPAIR, 0xB0),
+    trans_cmd(CT.ALL_OFF, 0xB2),
+    trans_cmd(CT.TIMER, 0xA5) | zhimei_timer(),
+    trans_cmd(CT.LIGHT_ON, 0xB3),
+    trans_cmd(CT.LIGHT_OFF, 0xB2),
+    trans_cmd(CT.LIGHT_SEC_ON, 0xA6, {}, {"args[0]":1}),
+    trans_cmd(CT.LIGHT_SEC_OFF, 0xA6, {}, {"args[0]":2}),
+    trans_cmd(CT.LIGHT_SEC_RGB_RGB, 0xCA) | multi_args(255),
+    trans_cmd(CT.LIGHT_DIM, 0xB5, {"param":0}) | zhijia_v0_multi_args(),
+    trans_cmd(CT.LIGHT_CCT, 0xB7, {"param":0}) | zhijia_v0_multi_args_reverse(),
+    trans_cmd(CT.FAN_DIR, 0xD9, {"args[0]":0}),
+    trans_cmd(CT.FAN_DIR, 0xDA, {"args[0]":1}),
+    trans_cmd(CT.FAN_OSC, 0xDE, {"args[0]": 0}, {"args[0]":1}),
+    trans_cmd(CT.FAN_OSC, 0xDE, {"args[0]": 1}, {"args[0]":2}),
+    trans_cmd(CT.FAN_ONOFF_SPEED, 0xD3) | multi_args(),
+    trans_cmd(CT.FAN_ONOFF_SPEED, 0xD1, {"args[0]":0}),
+    trans_cmd(CT.LIGHT_WCOLOR, 0xA1, {"param":0}) | multi_args(250), # not validated
+    trans_cmd(CT.LIGHT_WCOLOR, 0xA1, {"param":3 , "args[0]":"0.1f", "args[1]":"0.1f"}, {"args[0]":25, "args[1]":25}),
+    trans_cmd(CT.LIGHT_WCOLOR, 0xA7, {"param":2 , "args[0]":0, "args[1]":1}, {"args[0]":1}),
+    trans_cmd(CT.LIGHT_WCOLOR, 0xA7, {"param":2 , "args[0]":1, "args[1]":0}, {"args[0]":2}),
+    trans_cmd(CT.LIGHT_WCOLOR, 0xA7, {"param":2 , "args[0]":1, "args[1]":1}, {"args[0]":3}),
+]
+
 class TranslatorGenerator():
     translators = {
         str(FanLampEncoderV1): [
@@ -150,6 +189,7 @@ class TranslatorGenerator():
         str(FanLampEncoderV2): [ 
             *FanLampCommonTranslators,
             trans_cmd(CT.TIMER, 0x41) | param1_arg0(),
+            trans_cmd(CT.LIGHT_RGB_RGB, 0x22) | fanlamp_rgb(),
             trans_cmd(CT.FAN_DIR, 0x15, {"args[0]": 0}, {"param1": 0x00}),
             trans_cmd(CT.FAN_DIR, 0x15, {"args[0]": 1}, {"param1": 0x01}),
             trans_cmd(CT.FAN_OSC, 0x16, {"args[0]": 0}, {"param1": 0x00}),
@@ -159,7 +199,11 @@ class TranslatorGenerator():
         ],
         str(ZhijiaEncoderV0): ZhijiaV0Translator,
         str(ZhijiaEncoderV1): ZhijiaV1V2CommonTranslator,
-        str(ZhijiaEncoderV2): ZhijiaV1V2CommonTranslator,
+        str(ZhijiaEncoderV2): [
+            *ZhijiaV1V2CommonTranslator,
+            trans_cmd(CT.LIGHT_RGB_DIM, 0xC8) | multi_arg0(250),
+            trans_cmd(CT.LIGHT_RGB_RGB, 0xCA) | multi_args(255),
+        ],
         str(RemoteEncoder): [
             trans_cmd(CT.LIGHT_ON, 0x08),
             trans_cmd(CT.LIGHT_OFF, 0x06),
@@ -170,6 +214,18 @@ class TranslatorGenerator():
             trans_cmd(CT.LIGHT_DIM, 0x02, {"param":1}) | multi_args(), # B+
             trans_cmd(CT.LIGHT_DIM, 0x03, {"param":2}) | multi_args(), # B-
             trans_cmd(CT.LIGHT_WCOLOR, 0x07, {"param":2}), # CCT / brightness Cycle
+        ],
+        str(ZhimeiEncoderV0): [
+            *ZhimeiCommonTranslator,
+            trans_cmd(CT.PAIR, 0xB4, {}, {"args[0]":170, "args[1]":102, "args[2]":85}),
+        ],
+        str(ZhimeiEncoderV1): [
+            *ZhimeiCommonTranslator,
+            trans_cmd(CT.PAIR, 0xB4, {}, {"args[0]":170, "args[1]":102, "args[2]":85}),
+        ],
+        str(ZhimeiEncoderV2): [
+            *ZhimeiCommonTranslator,
+            trans_cmd(CT.PAIR, 0xB4),
         ],
     }
     created = {}
@@ -321,6 +377,40 @@ BLE_ADV_ENCODERS = {
         },
         "default_variant": "v2",
         "default_forced_id": 0xC630B8,
+    },
+    "zhimei": {
+        "variants": {
+            "v0": {
+                "class": ZhimeiEncoderV0,
+                "args": [  ],
+                "max_forced_id": 0xFFFF,
+                "ble_param": [ 0x19, 0x03 ],
+                "header": [ 0x55 ],
+            },
+            "v1": {
+                "class": ZhimeiEncoderV1,
+                "args": [  ],
+                "max_forced_id": 0xFFFF,
+                "ble_param": [ 0x1A, 0x03 ],
+                "header": [ 0x48, 0x46, 0x4B, 0x4A ],
+            },
+            "v1b": {
+                "class": ZhimeiEncoderV1,
+                "args": [  ],
+                "max_forced_id": 0xFFFF,
+                "ble_param": [ 0x1A, 0xFF ],
+                "header": [ 0x58, 0x55, 0x18, 0x48, 0x46, 0x4B, 0x4A ],
+            },
+            "v2": {
+                "class": ZhimeiEncoderV2,
+                "args": [  ],
+                "max_forced_id": 0xFFFF,
+                "ble_param": [ 0x1A, 0x03 ],
+                "header": [ 0xF9, 0x08, 0x49 ],
+            },
+        },
+        "default_variant": "v1",
+        "default_forced_id": 0,
     },
     "remote" : {
         "variants": {

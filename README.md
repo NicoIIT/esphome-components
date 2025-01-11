@@ -19,6 +19,7 @@ Supported apps:
 * Vmax smart
 * Zhi Jia
 * Zhi Guang
+* ZhiMeiDengKong
 * Other (Legacy), removed app from play store: 'FanLamp', 'ControlSwitch'
 
 ## Components

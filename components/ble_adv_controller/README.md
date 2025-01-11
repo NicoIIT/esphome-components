@@ -7,6 +7,7 @@ Allows to control devices using BLE ADV protocol.
 - **encoding** (Required): the encoding, can be any of:
     - 'zhijia', for 'Zhi Jia' app
     - 'zhiguang', for 'Zhi Guang' app, same settings as 'zhijia'
+    - 'zhimei', for 'ZhiMeiDengKong' app
     - 'fanlamp_pro', for 'FanLamp Pro' app or 'ApplianceSmart' App
     - 'lampsmart_pro', for 'LampSmart Pro' App, 'LampSmart Pro-Soft Lighting' App or 'Vmax smart' App
     - 'remote', for some of the remotes we know
@@ -15,6 +16,7 @@ Allows to control devices using BLE ADV protocol.
 
 - **variant** (Optional): the variant of the encoding
     - For 'zhijia': Can be v0 (MSC16), v1 (MSC26) or v2 (MSC26A), default is v2
+    - For 'zhimei': Can be v0 , v1, v1b or v2, default is v1
     - For 'fanlamp_pro': Can be any of v1, v2 or v3, default is v3
     - For 'lampsmart_pro': Can be v1, v2 or v3, default is v3
     - For 'remote': can be v1 or v3 (only remotes we know for now..), default is v3
@@ -23,7 +25,7 @@ Allows to control devices using BLE ADV protocol.
 
 - **forced_id** (Optional, Default: 0): the unique identifier of a remote or a phone, 2 to 4 bytes
     For ZhiJia, default to 0xC630B8 which was the value hard-coded in ble_adv_light component. Max 0xFFFFFF.
-    For FanLamp: default to 0, uses the hash id computed by esphome from the id/name of the controller if not provided.
+    For FanLamp and other: default to 0, uses the hash id computed by esphome from the id/name of the controller if not provided.
 
 - **index** (Optional, Default: 0): the index, a supplementary identifier used by Phone Apps to distinguish in between the controlled device.
 
@@ -127,7 +129,7 @@ fan:
 - **type** (Optional, Default: 'cww') must be 'cww' for this light if specified
 - **secondary** (Optional, Default: False) True if this is not the primary but the secondary light
 - **min_brightness** (Optional, Default: 2%) % minimum brightness supported by the light before it shuts done. Just setup this value to 0, then test your lamp by decreasing the brightness percent by percent, when it switches off, you have the min_brightness to setup here. Can be setup using Dynamic Configuration
-- **separate_dim_cct** (Optional, Default: False). Use separate commands to control Brightness and Color Temperature of the device. Needed by some Zhi Jia lamps not supporting standard command.
+- **separate_dim_cct** (Optional, Default: False). Use separate commands to control Brightness and Color Temperature of the device. Needed by some ZhiJia and ZhiMei lamps not supporting standard command.
 
 All variables of standard light are also available, see [ESPHome doc](https://esphome.io/components/light/). In particular you may be interested by `constant_brightness` or `default_transition_length`
 
@@ -142,6 +144,16 @@ All variables of standard light are also available, see [ESPHome doc](https://es
 In case the `type` is not specified, it is by default computed as:
 - 'cww' if `secondary` is not specified, or set to `false`
 - 'onoff' if `secondary: true` specified
+
+## Configuration for RGB Light
+
+### Variables
+- **ble_adv_controller_id** (Required), the id of the related ble_adv_controller
+- **name** (Required), the name of the entity as it will appear in HA
+- **type** (Required) must be 'rgb' for this light
+- **secondary** (Optional, Default: False) True if this is not the primary but the secondary light
+- **separate_dim_rgb** (Optional, Default: False). Use separate commands to control Brightness and RGB of the device. Needed by ZhiJia RGB lamps.
+
 
 ## Configuration for Fan
 

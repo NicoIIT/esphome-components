@@ -200,10 +200,11 @@ void BleAdvEntity::command(BleAdvGenCmd &gen_cmd) {
   this->get_parent()->enqueue(gen_cmd);
 }
 
-void BleAdvEntity::command(CommandType cmd_type, float value1, float value2) {
+void BleAdvEntity::command(CommandType cmd_type, float value1, float value2, float value3) {
   BleAdvGenCmd gen_cmd(cmd_type);
   gen_cmd.args[0] = value1;
   gen_cmd.args[1] = value2;
+  gen_cmd.args[2] = value3;
   this->command(gen_cmd);
 }
 

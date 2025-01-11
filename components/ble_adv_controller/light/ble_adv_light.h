@@ -16,13 +16,13 @@ class BleAdvLightBase : public light::LightOutput, public light::LightState, pub
   light::LightTraits get_traits() override { return this->traits_; }
   void set_secondary(bool secondary) { this->secondary_ = secondary; }
 
-  void publish(const BleAdvGenCmd & gen_cmd) override;
-  void update_state(light::LightState *state) override { this->control(); }
+  void publish(const BleAdvGenCmd & gen_cmd) override final;
+  void update_state(light::LightState *state) override final { this->control(); }
 
  protected: 
   virtual void control() = 0;
   virtual void publish_impl(const BleAdvGenCmd & gen_cmd) = 0;
-  void command(CommandType cmd, float value1 = 0, float value2 = 0) override;
+  void command(CommandType cmd, float value1 = 0, float value2 = 0, float value3 = 0) override;
 
   light::LightTraits traits_;
   bool secondary_ = false;
@@ -68,6 +68,26 @@ class BleAdvLightBinary : public BleAdvLightBase
  protected:
   void control() override;
   void publish_impl(const BleAdvGenCmd & gen_cmd) override;
+};
+
+class BleAdvLightRGB : public BleAdvLightBase
+{
+ public:
+  void set_traits() { this->traits_.set_supported_color_modes({light::ColorMode::RGB}); };
+  void dump_config() override;
+  void set_split_dim_rgb(bool split_dim_rgb) { this->split_dim_rgb_ = split_dim_rgb; }
+
+ protected:
+  void control() override;
+  void publish_impl(const BleAdvGenCmd & gen_cmd) override;
+
+  bool split_dim_rgb_{false};
+
+  bool is_off_{true};
+  float brightness_{0};
+  float red_{0};
+  float green_{0};
+  float blue_{0};
 };
 
 } //namespace ble_adv_controller

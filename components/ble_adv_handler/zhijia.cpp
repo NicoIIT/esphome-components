@@ -41,7 +41,7 @@ bool ZhijiaEncoderV0::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
 
   data_map_t * data = (data_map_t *) buf;
   uint16_t crc16 = this->crc16(buf, ADDR_LEN + TXDATA_LEN);
-  ENSURE_EQ(crc16, data->crc16, "Decoded KO (CRC)");
+  if (crc16 != data->crc16) return false;
 
   uint8_t addr[ADDR_LEN];
   this->reverse_all(buf, ADDR_LEN);
@@ -96,7 +96,7 @@ bool ZhijiaEncoderV1::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
 
   data_map_t * data = (data_map_t *) buf;
   uint16_t crc16 = this->crc16(buf, ADDR_LEN + TXDATA_LEN);
-  ENSURE_EQ(crc16, data->crc16, "Decoded KO (CRC)");
+  if (crc16 != data->crc16) return false;
 
   uint8_t addr[ADDR_LEN];
   this->reverse_all(data->addr, ADDR_LEN);

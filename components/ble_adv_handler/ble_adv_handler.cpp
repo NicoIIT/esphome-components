@@ -129,6 +129,12 @@ std::string BleAdvGenCmd::str() const {
     case CommandType::LIGHT_WCOLOR:
       ind = std::sprintf(ret, "LIGHT_WCOLOR/%d - cold: %.0f%%, warm: %.0f%%", this->param, this->args[0] * 100, this->args[1] * 100);
       break;
+    case CommandType::LIGHT_RGB_RGB:
+      ind = std::sprintf(ret, "LIGHT_RGB_RGB - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
+      break;
+    case CommandType::LIGHT_RGB_DIM:
+      ind = std::sprintf(ret, "LIGHT_RGB_DIM - %.0f%%", this->args[0] * 100);
+      break;
     case CommandType::LIGHT_SEC_ON:
       ind = std::sprintf(ret, "LIGHT_SEC_ON");
       break;
@@ -137,6 +143,12 @@ std::string BleAdvGenCmd::str() const {
       break;
     case CommandType::LIGHT_SEC_TOGGLE:
       ind = std::sprintf(ret, "LIGHT_SEC_TOGGLE");
+      break;
+    case CommandType::LIGHT_SEC_RGB_RGB:
+      ind = std::sprintf(ret, "LIGHT_SEC_RGB_RGB - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
+      break;
+    case CommandType::LIGHT_SEC_RGB_DIM:
+      ind = std::sprintf(ret, "LIGHT_SEC_RGB_DIM - %.0f%%", this->args[0] * 100);
       break;
     case CommandType::FAN_ONOFF_SPEED:
       ind = std::sprintf(ret, "FAN_ONOFF_SPEED - %0.f/%0.f", this->args[0], this->args[1]);
@@ -222,12 +234,17 @@ void BleAdvEncoder::whiten(uint8_t *buf, size_t len, uint8_t seed) const {
   }
 }
 
-void BleAdvEncoder::reverse_all(uint8_t* buf, uint8_t len) const {
-  for (size_t i = 0; i < len; ++i) {
-    uint8_t & x = buf[i];
+// 1100 1010 => 0101 0011
+uint8_t BleAdvEncoder::reverse_byte(uint8_t x) const {
     x = ((x & 0x55) << 1) | ((x & 0xAA) >> 1);
     x = ((x & 0x33) << 2) | ((x & 0xCC) >> 2);
     x = ((x & 0x0F) << 4) | ((x & 0xF0) >> 4);
+    return x;
+}
+
+void BleAdvEncoder::reverse_all(uint8_t* buf, uint8_t len) const {
+  for (size_t i = 0; i < len; ++i) {
+    buf[i] = reverse_byte(buf[i]);
   }
 }
 

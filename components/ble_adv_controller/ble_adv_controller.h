@@ -110,7 +110,7 @@ class BleAdvEntity: public Parented < BleAdvController >
   protected:
     void dump_config_base(const char * tag);
     void command(BleAdvGenCmd &gen_cmd);
-    virtual void command(CommandType cmd, float value1 = 0, float value2 = 0);
+    virtual void command(CommandType cmd, float value1 = 0, float value2 = 0, float value3 = 0);
 };
 
 } //namespace ble_adv_controller

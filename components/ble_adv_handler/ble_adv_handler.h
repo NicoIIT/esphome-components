@@ -37,7 +37,8 @@ enum CommandType {
   LIGHT_CCT = 14,
   LIGHT_WCOLOR = 15,
   LIGHT_TOGGLE = 16,
-  LIGHT_RGB = 17,
+  LIGHT_RGB_RGB = 17,
+  LIGHT_RGB_DIM = 18,
   // Secondary Light Commands: 21 -> 30
   LIGHT_SEC_ON = 21,
   LIGHT_SEC_OFF = 22,
@@ -45,7 +46,8 @@ enum CommandType {
   LIGHT_SEC_CCT = 24,
   LIGHT_SEC_WCOLOR = 25,
   LIGHT_SEC_TOGGLE = 26,
-  LIGHT_SEC_RGB = 27,
+  LIGHT_SEC_RGB_RGB = 27,
+  LIGHT_SEC_RGB_DIM = 28,
   // Fan Commands: 31 -> 40
   FAN_ONOFF_SPEED = 33,
   FAN_DIR = 34,
@@ -133,7 +135,7 @@ public:
 
   CommandType cmd;
   uint8_t param = 0;
-  float args[2]{0};
+  float args[3]{0};
 };
 
 class BleAdvEncCmd
@@ -185,6 +187,7 @@ protected:
   virtual void encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const = 0;
 
   // utils for encoding
+  uint8_t reverse_byte(uint8_t byte) const;
   void reverse_all(uint8_t* buf, uint8_t len) const;
   void whiten(uint8_t *buf, size_t len, uint8_t seed) const;
 
