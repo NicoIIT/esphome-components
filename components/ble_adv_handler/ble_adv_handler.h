@@ -37,10 +37,15 @@ enum CommandType {
   LIGHT_CCT = 14,
   LIGHT_WCOLOR = 15,
   LIGHT_TOGGLE = 16,
+  LIGHT_RGB = 17,
   // Secondary Light Commands: 21 -> 30
   LIGHT_SEC_ON = 21,
   LIGHT_SEC_OFF = 22,
-  LIGHT_SEC_TOGGLE = 23,
+  LIGHT_SEC_DIM = 23,
+  LIGHT_SEC_CCT = 24,
+  LIGHT_SEC_WCOLOR = 25,
+  LIGHT_SEC_TOGGLE = 26,
+  LIGHT_SEC_RGB = 27,
   // Fan Commands: 31 -> 40
   FAN_ONOFF_SPEED = 33,
   FAN_DIR = 34,

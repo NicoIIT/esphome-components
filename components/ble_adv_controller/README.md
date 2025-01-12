@@ -119,23 +119,29 @@ fan:
     name: Fan
 ```
 
-## Configuration for Primary Light
+## Configuration for Cold / Warm White Light
 
 ### Variables
 - **ble_adv_controller_id** (Required), the id of the related ble_adv_controller
 - **name** (Required), the name of the entity as it will appear in HA
+- **type** (Optional, Default: 'cww') must be 'cww' for this light if specified
+- **secondary** (Optional, Default: False) True if this is not the primary but the secondary light
 - **min_brightness** (Optional, Default: 2%) % minimum brightness supported by the light before it shuts done. Just setup this value to 0, then test your lamp by decreasing the brightness percent by percent, when it switches off, you have the min_brightness to setup here. Can be setup using Dynamic Configuration
 - **separate_dim_cct** (Optional, Default: False). Use separate commands to control Brightness and Color Temperature of the device. Needed by some Zhi Jia lamps not supporting standard command.
 
 All variables of standard light are also available, see [ESPHome doc](https://esphome.io/components/light/). In particular you may be interested by `constant_brightness` or `default_transition_length`
 
-## Configuration for Secondary Light
+## Configuration for Binary Light
 
 ### Variables
 - **ble_adv_controller_id** (Required), the id of the related ble_adv_controller
 - **name** (Required), the name of the entity as it will appear in HA
-- **secondary** (Required, true) identifies this light as a secondary light
-Only ON / OFF is available for this light
+- **type** (Optional, Default: 'onoff') must be 'onoff' for this light if specified
+- **secondary** (Optional, Default: False) True if this is not the primary but the secondary light
+
+In case the `type` is not specified, it is by default computed as:
+- 'cww' if `secondary` is not specified, or set to `false`
+- 'onoff' if `secondary: true` specified
 
 ## Configuration for Fan
 

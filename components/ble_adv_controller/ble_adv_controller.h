@@ -106,7 +106,7 @@ class BleAdvEntity: public Component, public Parented < BleAdvController >
   protected:
     void dump_config_base(const char * tag);
     void command(BleAdvGenCmd &gen_cmd);
-    void command(CommandType cmd, float value1 = 0, float value2 = 0);
+    virtual void command(CommandType cmd, float value1 = 0, float value2 = 0);
 
     // skip next commands
     bool skip_commands_{false};

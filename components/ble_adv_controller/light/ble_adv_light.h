@@ -6,13 +6,31 @@
 namespace esphome {
 namespace ble_adv_controller {
 
-class BleAdvLight : public light::LightOutput, public BleAdvEntity, public EntityBase
+class BleAdvLightBase : public light::LightOutput, public BleAdvEntity, public EntityBase
+{
+ public:
+  void dump_config() override;
+  void setup_state(light::LightState *state) override { this->state_ = state; };
+  void write_state(light::LightState *state) override {};
+  light::LightTraits get_traits() override { return this->traits_; }
+  void set_secondary(bool secondary) { this->secondary_ = secondary; }
+
+  void publish(const BleAdvGenCmd & gen_cmd) override;
+
+ protected: 
+  virtual void publish_impl(const BleAdvGenCmd & gen_cmd) = 0;
+  void command(CommandType cmd, float value1 = 0, float value2 = 0) override;
+
+  light::LightState * state_{nullptr};
+  light::LightTraits traits_;
+  bool secondary_ = false;
+};
+
+class BleAdvLightCww : public BleAdvLightBase
 {
  public:
   void setup() override;
   void dump_config() override;
-
-  void publish(const BleAdvGenCmd & gen_cmd) override;
 
   void set_traits(float cold_white_temperature, float warm_white_temperature);
   void set_constant_brightness(bool constant_brightness) { this->constant_brightness_ = constant_brightness; }
@@ -26,15 +44,11 @@ class BleAdvLight : public light::LightOutput, public BleAdvEntity, public Entit
   float get_ha_color_temperature(float device_color_temperature);
   float get_device_color_temperature(float ha_color_temperature);
 
-  void setup_state(light::LightState *state) override { this->state_ = state; };
   void update_state(light::LightState *state) override;
-  void write_state(light::LightState *state) override {};
-  light::LightTraits get_traits() override { return this->traits_; }
 
  protected:
-  light::LightState * state_{nullptr};
+  void publish_impl(const BleAdvGenCmd & gen_cmd) override;
 
-  light::LightTraits traits_;
   bool constant_brightness_;
   ble_adv_handler::BleAdvNumber number_min_brightness_;
   bool split_dim_cct_;
@@ -44,21 +58,15 @@ class BleAdvLight : public light::LightOutput, public BleAdvEntity, public Entit
   float warm_color_{0};
 };
 
-class BleAdvSecLight : public light::LightOutput, public BleAdvEntity, public EntityBase
+class BleAdvLightBinary : public BleAdvLightBase
 {
  public:
   void set_traits() { this->traits_.set_supported_color_modes({light::ColorMode::ON_OFF}); };
   void dump_config() override;
-  void publish(const BleAdvGenCmd & gen_cmd) override;
-
-  void setup_state(light::LightState *state) override { this->state_ = state; };
   void update_state(light::LightState *state) override;
-  void write_state(light::LightState *state) override {};
-  light::LightTraits get_traits() override { return this->traits_; };
 
  protected:
-  light::LightState * state_{nullptr};
-  light::LightTraits traits_;
+  void publish_impl(const BleAdvGenCmd & gen_cmd) override;
 };
 
 } //namespace ble_adv_controller
