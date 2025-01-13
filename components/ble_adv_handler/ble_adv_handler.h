@@ -72,6 +72,7 @@ public:
   BleAdvParam() {};
   BleAdvParam(BleAdvParam&&) = default;
   BleAdvParam& operator=(BleAdvParam&&) = default;
+  std::string str() const;
 
   void from_raw(const uint8_t * buf, size_t len);
   void from_hex_string(std::string & raw);
@@ -88,7 +89,8 @@ public:
   const uint8_t * get_const_data_buf() const { return this->buf_ + this->data_index_ + 2; }
 
   uint8_t * get_full_buf() { return this->buf_; }
-  uint8_t get_full_len() { return this->len_; }
+  const uint8_t * get_const_full_buf() const { return this->buf_; }
+  uint8_t get_full_len() const { return this->len_; }
 
   bool is_data_equal(const BleAdvParam & comp) const;
   bool operator==(const BleAdvParam & comp) const { return std::equal(comp.buf_, comp.buf_ + MAX_PACKET_LEN, this->buf_); }
@@ -138,6 +140,7 @@ class BleAdvEncCmd
 {
 public:
   BleAdvEncCmd(uint8_t acmd = 0): cmd(acmd) {}
+  std::string str() const;
   uint8_t cmd;
   uint8_t param1 = 0;
   uint8_t args[3]{0};
@@ -205,6 +208,29 @@ protected:
 #define ENSURE_EQ(param1, param2, ...) if ((param1) != (param2)) { ESP_LOGD(this->id_.c_str(), __VA_ARGS__); return false; }
 class BleAdvDevice;
 
+
+struct BleAdvConfig_t {
+  std::string encoding;
+  std::string variant;
+  uint32_t forced_id;
+  uint8_t index;
+  std::string str() const {
+    char str[100] = "";
+    sprintf(str, "  encoding: %s\n  variant: %s\n  forced_id: 0x%X\n  index: %d", 
+            encoding.c_str(), variant.c_str(), forced_id, index);
+    return str;
+  }
+};
+
+struct BleAdvDecoded_t {
+  BleAdvGenCmd gen;
+  BleAdvEncCmd enc;
+  BleAdvConfig_t conf;
+};
+
+using BleAdvBaseRawTrigger = Trigger<const BleAdvParam &>;
+using BleAdvBaseDecodedTrigger = Trigger<const BleAdvDecoded_t &>;
+
 /**
   BleAdvHandler: Central class instanciated only ONCE
   It owns the list of registered encoders and their simplified access, to be used by Controllers.
@@ -253,6 +279,10 @@ public:
   void on_raw_decode(std::string raw);
   void on_raw_listen(std::string raw);
 #endif
+
+  // Triggers
+  void register_decoded_trigger(BleAdvBaseDecodedTrigger * trigger) { this->decoded_triggers_.push_back(trigger); }
+  void register_raw_trigger(BleAdvBaseRawTrigger * trigger) { this->raw_triggers_.push_back(trigger); }
 
 protected:
   // ref to registered encoders
@@ -313,6 +343,10 @@ protected:
 
   // children devices listening
   std::vector< BleAdvDevice * > devices_;
+
+  // Triggers
+  std::vector< BleAdvBaseRawTrigger * > raw_triggers_;
+  std::vector< BleAdvBaseDecodedTrigger * > decoded_triggers_;
 };
 
 

@@ -5,8 +5,10 @@ from esphome.const import (
     CONF_ID,
     CONF_INDEX,
     CONF_VARIANT,
+    CONF_TRIGGER_ID,
     PLATFORM_ESP32,
 )
+from esphome import automation
 from esphome.cpp_helpers import setup_entity
 from .const import (
     CONF_BLE_ADV_HANDLER_ID,
@@ -25,8 +27,12 @@ MULTI_CONF = False
 
 bleadvhandler_ns = cg.esphome_ns.namespace('ble_adv_handler')
 BleAdvEncoder = bleadvhandler_ns.class_('BleAdvEncoder')
-BleAdvMultiEncoder = bleadvhandler_ns.class_('BleAdvMultiEncoder', BleAdvEncoder)
 BleAdvHandler = bleadvhandler_ns.class_('BleAdvHandler', cg.Component)
+
+BleAdvDecodedTrigger = bleadvhandler_ns.class_('BleAdvDecodedTrigger')
+BleAdvRawTrigger = bleadvhandler_ns.class_('BleAdvRawTrigger')
+BleAdvDecodedConstRef = bleadvhandler_ns.class_('BleAdvDecoded_t').operator("ref").operator("const")
+BleAdvRawConstRef = bleadvhandler_ns.class_('BleAdvParam').operator("ref").operator("const")
 
 FanLampEncoderV1 = bleadvhandler_ns.class_('FanLampEncoderV1')
 FanLampEncoderV2 = bleadvhandler_ns.class_('FanLampEncoderV2')
@@ -444,6 +450,8 @@ CONF_BLE_ADV_LOG_RAW = "log_raw"
 CONF_BLE_ADV_LOG_COMMAND = "log_command"
 CONF_BLE_ADV_LOG_CONFIG = "log_config"
 CONF_BLE_ADV_USE_MAX_TX_POWER = "use_max_tx_power"
+CONF_BLE_ADV_ON_DECODED = "on_decoded"
+CONF_BLE_ADV_ON_RAW = "on_raw"
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -456,6 +464,12 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_BLE_ADV_LOG_COMMAND, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_LOG_CONFIG, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_USE_MAX_TX_POWER, default=False): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_ON_DECODED): automation.validate_automation({
+            cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(BleAdvDecodedTrigger),
+        }),
+        cv.Optional(CONF_BLE_ADV_ON_RAW): automation.validate_automation({
+            cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(BleAdvRawTrigger),
+        }),
     }),
     cv.only_on([PLATFORM_ESP32]),
 )
@@ -477,6 +491,12 @@ async def to_code(config):
     cg.add(var.set_check_reencoding(config[CONF_BLE_ADV_CHECK_REENCODING]))
     cg.add(var.set_logging(config[CONF_BLE_ADV_LOG_RAW], config[CONF_BLE_ADV_LOG_COMMAND], config[CONF_BLE_ADV_LOG_CONFIG]))
     cg.add(var.set_use_max_tx_power(config[CONF_BLE_ADV_USE_MAX_TX_POWER]))
+    for conf in config.get(CONF_BLE_ADV_ON_DECODED, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(BleAdvDecodedConstRef, "x")], conf)
+    for conf in config.get(CONF_BLE_ADV_ON_RAW, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(BleAdvRawConstRef, "x")], conf)
     parent = await cg.get_variable(config[CONF_BLE_ID])
     cg.add(parent.register_gap_event_handler(var))
     cg.add(var.set_parent(parent))

@@ -73,3 +73,40 @@ Just put the raw hexa string in the `raw` parameters, accepted formats (leading 
 ```
 
 You will see the result of the decoding in the logs of the application (see previous section how to configue this).
+
+## Automation Triggers
+
+- **ble_adv_handler.on_raw**
+
+This trigger is activated each time a raw BLE ADV packet is received, whatever if it correspond to a valid decoder or not. An Instance of BleAdvParam is given as 'x' parameter.
+
+```yaml
+ble_adv_handler:
+  on_raw:
+    - logger.log:
+        format: "raw - %s"
+        args: ["x.str().c_str()"]
+```
+
+- **ble_adv_handler.on_decoded**
+
+This trigger is activated each time a BLE ADV packet is received AND decoded by a decoder. An Instance of BleAdvDecoded_t structure is given as 'x' parameter.
+
+```yaml
+ble_adv_handler:
+  on_decoded:
+    - logger.log:
+        format: "config:\n%s"
+        args: ["x.conf.str().c_str()"]
+    - logger.log:
+        format: "gen - %s, enc - %s"
+        args: ["x.gen.str().c_str()", "x.enc.str().c_str()"]
+    - homeassistant.action:
+        action: notify.persistent_notification
+        data:
+          title: Decoded Config
+        data_template:
+          message: '{{ config }}'
+        variables:
+          config: 'return x.conf.str();'
+```

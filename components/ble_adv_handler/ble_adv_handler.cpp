@@ -12,6 +12,10 @@ namespace ble_adv_handler {
 
 static const char *TAG = "ble_adv_handler";
 
+std::string BleAdvParam::str() const {
+  return esphome::format_hex_pretty(this->get_const_full_buf(), this->get_full_len());
+}
+
 void BleAdvParam::from_raw(const uint8_t * buf, size_t len) {
   // Copy the raw data as is, limiting to the max size of the buffer
   this->len_ = std::min(MAX_PACKET_LEN, len);
@@ -93,7 +97,7 @@ std::string BleAdvGenCmd::str() const {
       ind = std::sprintf(ret, "ALL_OFF");
       break;
     case CommandType::TIMER:
-      ind = std::sprintf(ret, "TIMER: - %0.f minutes", this->args[0]);
+      ind = std::sprintf(ret, "TIMER - %0.f minutes", this->args[0]);
       break;
     case CommandType::LIGHT_ON:
       ind = std::sprintf(ret, "LIGHT_ON");
@@ -153,6 +157,13 @@ std::string BleAdvGenCmd::str() const {
       ind = std::sprintf(ret, "UNKNOWN - %d", this->cmd);
       break;
   }
+  return ret;
+}
+
+std::string BleAdvEncCmd::str() const {
+  char ret[100]{0};
+  size_t ind = 0;
+  ind = std::sprintf(ret, "cmd: 0x%02X - param1: 0x%02X - args: [%d, %d, %d]", this->cmd, this->param1, this->args[0], this->args[1], this->args[2]);
   return ret;
 }
 
@@ -278,35 +289,39 @@ bool BleAdvHandler::handle_raw_param(BleAdvParam & param, bool publish) {
   if (this->log_raw_) {
     ESP_LOGD(TAG, "raw - %s", esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
   }
+  for (auto & raw_trigger: this->raw_triggers_) {
+    raw_trigger->trigger(param);
+  }
   for(auto & encoder : this->encoders_) {
     ControllerParam_t cont;
-    BleAdvEncCmd enc_cmd;
-    if(encoder->decode(param, enc_cmd, cont)) {
-      BleAdvGenCmd gen_cmd;
-      encoder->translate_e2g(gen_cmd, enc_cmd);
+    BleAdvDecoded_t decoded;
+    if(encoder->decode(param, decoded.enc, cont)) {
+      encoder->translate_e2g(decoded.gen, decoded.enc);
       if (this->log_command_) {
         ESP_LOGD(encoder->get_id().c_str(), "Decoded OK - tx: %d, gen: %s, enc: %s", 
-                cont.tx_count_, gen_cmd.str().c_str(), encoder->to_str(enc_cmd).c_str());
+                cont.tx_count_, decoded.gen.str().c_str(), encoder->to_str(decoded.enc).c_str());
       }
       for (auto & device: this->devices_) {
         if (publish && device->is_elligible(encoder->get_id(), cont)) {
-          device->publish(gen_cmd, false);
+          device->publish(decoded.gen, false);
         }
       }
+      decoded.conf.encoding = encoder->get_encoding().c_str();
+      decoded.conf.variant = encoder->get_variant().c_str();
+      decoded.conf.forced_id = cont.id_;
+      decoded.conf.index = cont.index_;
       if (this->log_config_) {
-        std::string config_str = "Configuration Parameters:";
-        config_str += "\n  encoding: %s";
-        config_str += "\n  variant: %s";
-        config_str += "\n  forced_id: 0x%X";
-        config_str += "\n  index: %d";
-        ESP_LOGD(TAG, config_str.c_str(), encoder->get_encoding().c_str(), encoder->get_variant().c_str(), cont.id_, cont.index_);
+        ESP_LOGD(TAG, "Configuration Parameters:\n%s", decoded.conf.str().c_str());
+      }
+      for (auto & decoded_trigger: this->decoded_triggers_) {
+        decoded_trigger->trigger(decoded);
       }
       
       if (this->check_reencoding_) {
         // Re encoding with the same parameters to check if it gives the same output
         BleAdvParams params;
         std::vector< BleAdvEncCmd > re_enc_cmds;
-        encoder->translate_g2e(re_enc_cmds, gen_cmd);
+        encoder->translate_g2e(re_enc_cmds, decoded.gen);
         for (auto & re_enc_cmd: re_enc_cmds) {
           encoder->encode(params, re_enc_cmd, cont);
           BleAdvParam & fparam = params.back();
