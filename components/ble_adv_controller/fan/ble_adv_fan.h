@@ -6,7 +6,7 @@
 namespace esphome {
 namespace ble_adv_controller {
 
-class BleAdvFan : public fan::Fan, public BleAdvEntity
+class BleAdvFan : public Component, public fan::Fan, public BleAdvEntity
 {
  public:
   void dump_config() override;

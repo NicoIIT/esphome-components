@@ -18,6 +18,8 @@ void BleAdvController::setup() {
 #ifdef USE_API
   register_service(&BleAdvController::pair, "pair_" + this->get_object_id());
   register_service(&BleAdvController::unpair, "unpair_" + this->get_object_id());
+  register_service(&BleAdvController::all_off, "all_off_" + this->get_object_id());
+  register_service(&BleAdvController::set_timer, "set_timer_" + this->get_object_id(), {"duration"});
   register_service(&BleAdvController::custom_cmd_float, "cmd_" + this->get_object_id(), {"cmd", "param", "arg0", "arg1", "arg2"});
   register_service(&BleAdvController::raw_inject, "inject_raw_" + this->get_object_id(), {"raw"});
 #endif
@@ -37,16 +39,29 @@ void BleAdvController::dump_config() {
   ESP_LOGCONFIG(TAG, "  Configuration visible: %s", this->show_config_ ? "YES" : "NO");
 }
 
+void BleAdvController::controller_command(const BleAdvGenCmd & gen_cmd) {
+  ESP_LOGD(TAG, "Controller cmd: %s.", gen_cmd.str().c_str());
+  this->enqueue(gen_cmd);
+}
+
 void BleAdvController::pair() { 
-  BleAdvGenCmd cmd(CommandType::PAIR);
-  ESP_LOGD(TAG, "Controller cmd: %s.", cmd.str().c_str());
-  this->enqueue(cmd);
+  this->controller_command(CommandType::PAIR);
 }
 
 void BleAdvController::unpair() {
-  BleAdvGenCmd cmd(CommandType::UNPAIR);
-  ESP_LOGD(TAG, "Controller cmd: %s.", cmd.str().c_str());
-  this->enqueue(cmd);
+  this->controller_command(CommandType::UNPAIR);
+}
+
+void BleAdvController::all_off() {
+  this->controller_command(CommandType::ALL_OFF);
+}
+
+void BleAdvController::set_timer(float duration) {  // duration is the number of minutes
+  this->cancel_timer();
+  BleAdvGenCmd gen_cmd(CommandType::TIMER);
+  gen_cmd.args[0] = duration;
+  this->controller_command(gen_cmd);
+  this->set_timeout(OFF_TIMER_NAME, duration * 60000, std::bind(&BleAdvController::publish, this, CommandType::ALL_OFF, false));
 }
 
 void BleAdvController::custom_cmd(BleAdvEncCmd & enc_cmd) {
@@ -87,25 +102,24 @@ void BleAdvController::enqueue(ble_adv_handler::BleAdvParams && params) {
 }
 
 void BleAdvController::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
+  this->skip_commands_ = !apply_command;
   if (gen_cmd.cmd == CommandType::TIMER) {
-    if (apply_command) {
-      this->enqueue(gen_cmd);
-    }
-    this->cancel_timer();
-    this->set_timeout(OFF_TIMER_NAME, gen_cmd.args[0] * 60000, std::bind(&BleAdvController::publish, this, CommandType::ALL_OFF, false));
-    ESP_LOGD(TAG, "Timer setup - %.0fh.", gen_cmd.args[0] / 60.0);
+    this->set_timer(gen_cmd.args[0]);
   } else if (gen_cmd.cmd == CommandType::ALL_OFF) {
-    this->publish_to_entities(BleAdvGenCmd(CommandType::LIGHT_OFF), apply_command);
-    this->publish_to_entities(BleAdvGenCmd(CommandType::LIGHT_SEC_OFF), apply_command);
-    this->publish_to_entities(BleAdvGenCmd(CommandType::FAN_ONOFF_SPEED), apply_command);
+    this->all_off();
+    this->skip_commands_ = true; // only apply the change of state
+    this->publish_to_entities(CommandType::LIGHT_OFF);
+    this->publish_to_entities(CommandType::LIGHT_SEC_OFF);
+    this->publish_to_entities(CommandType::FAN_ONOFF_SPEED);
   } else if (!gen_cmd.is_controller_cmd()) {
-    this->publish_to_entities(gen_cmd, apply_command);
+    this->publish_to_entities(gen_cmd);
   }
+  this->skip_commands_ = false;
 }
 
-void BleAdvController::publish_to_entities(const BleAdvGenCmd & gen_cmd, bool apply_command) {
+void BleAdvController::publish_to_entities(const BleAdvGenCmd & gen_cmd) {
   for (auto & entity : this->entities_) {
-    entity->publish(gen_cmd, apply_command);
+    entity->publish(gen_cmd);
   }
 }
 
@@ -118,6 +132,17 @@ void BleAdvController::increase_counter() {
 }
 
 bool BleAdvController::enqueue(const BleAdvGenCmd &gen_cmd) {
+  // Cancel Timer on any command issued if configured
+  if (this->is_cancel_timer_on_any_change() && !gen_cmd.is_controller_cmd()) {
+    this->cancel_timer();
+  }
+
+  // Check if it is needed to send the command to the controlled device
+  if (this->skip_commands_) {
+    ESP_LOGD(TAG, "Publishing mode - No Command sent to controlled Device.");
+    return false;
+  }
+
   // Remove any previous command of the same type in the queue
   uint8_t nb_rm = std::count_if(this->commands_.begin(), this->commands_.end(), [&](QueueItem& q){ return q.cmd_type_ == gen_cmd.cmd; });
   if (nb_rm) {
@@ -172,14 +197,7 @@ void BleAdvEntity::dump_config_base(const char * tag) {
 }
 
 void BleAdvEntity::command(BleAdvGenCmd &gen_cmd) {
-  if (!this->skip_commands_) {
-    this->get_parent()->enqueue(gen_cmd);
-  } else {
-    ESP_LOGD(TAG, "Publishing mode - No Command sent to controlled Device.");
-  }
-  if (this->get_parent()->is_cancel_timer_on_any_change() && !gen_cmd.is_controller_cmd()) {
-    this->get_parent()->cancel_timer();
-  }
+  this->get_parent()->enqueue(gen_cmd);
 }
 
 void BleAdvEntity::command(CommandType cmd_type, float value1, float value2) {
@@ -187,12 +205,6 @@ void BleAdvEntity::command(CommandType cmd_type, float value1, float value2) {
   gen_cmd.args[0] = value1;
   gen_cmd.args[1] = value2;
   this->command(gen_cmd);
-}
-
-void BleAdvEntity::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
-  this->skip_commands_ = !apply_command;
-  this->publish(gen_cmd);
-  this->skip_commands_ = false;
 }
 
 } // namespace ble_adv_controller

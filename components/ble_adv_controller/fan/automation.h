@@ -8,7 +8,7 @@ namespace ble_adv_controller {
 
 template<typename... Ts> class FanPublishStateAction : public Action<Ts...> {
 public:
-  explicit FanPublishStateAction(fan::Fan* fan): fan_(fan) {}
+  explicit FanPublishStateAction(BleAdvFan* fan): fan_(fan) {}
   TEMPLATABLE_VALUE(bool, state)
   TEMPLATABLE_VALUE(bool, oscillating)
   TEMPLATABLE_VALUE(int, speed)
@@ -31,7 +31,7 @@ public:
   }
 
 protected:
-  fan::Fan *fan_;
+  BleAdvFan *fan_;
 };
 
 }

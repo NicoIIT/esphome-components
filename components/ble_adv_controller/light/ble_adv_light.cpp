@@ -11,8 +11,8 @@ float ensure_range(float f, float mini = 0.0f, float maxi = 1.0f) {
 }
 
 void BleAdvLightBase::dump_config() {
+  light::LightState::dump_config();
   BleAdvEntity::dump_config_base(TAG);
-  ESP_LOGCONFIG(TAG, "  Base Light '%s'", this->state_->get_name().c_str());
   ESP_LOGCONFIG(TAG, "  Secondary: %s", this->secondary_ ? "YES" : "NO");
 }
 
@@ -54,8 +54,8 @@ void BleAdvLightCww::setup() {
 }
 
 void BleAdvLightCww::dump_config() {
-  ESP_LOGCONFIG(TAG, "BleAdvLight - Cold / Warm White");
   BleAdvLightBase::dump_config();
+  ESP_LOGCONFIG(TAG, "  BleAdvLight - Cold / Warm White");
   ESP_LOGCONFIG(TAG, "  Cold White Temperature: %f mireds", this->traits_.get_min_mireds());
   ESP_LOGCONFIG(TAG, "  Warm White Temperature: %f mireds", this->traits_.get_max_mireds());
   ESP_LOGCONFIG(TAG, "  Constant Brightness: %s", this->constant_brightness_ ? "true" : "false");
@@ -79,15 +79,15 @@ float BleAdvLightCww::get_device_color_temperature(float ha_color_temperature) {
 }
 
 void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
-  light::LightCall call = this->state_->make_call();
+  light::LightCall call = this->make_call();
   call.set_color_mode(light::ColorMode::COLD_WARM_WHITE);
 
   if (gen_cmd.cmd == CommandType::LIGHT_ON) {
-    call.set_state(1.0f).perform();
+    call.set_state(true).perform();
   } else if (gen_cmd.cmd == CommandType::LIGHT_OFF) {
-    call.set_state(0.0f).perform();
+    call.set_state(false).perform();
   } else if (gen_cmd.cmd == CommandType::LIGHT_TOGGLE) {
-    call.set_state(this->is_off_ ? 1.0f : 0.0f).perform();
+    call.set_state(this->is_off_).perform();
   } else if (this->is_off_) {
     ESP_LOGD(TAG, "Change ignored as entity is OFF.");
     return;
@@ -117,9 +117,9 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
   }
 }
 
-void BleAdvLightCww::update_state(light::LightState *state) {
+void BleAdvLightCww::control() {
   // If target state is off, switch off
-  if (state->current_values.get_state() == 0) {
+  if (this->current_values.get_state() == 0) {
     ESP_LOGD(TAG, "Switch OFF");
     this->command(CommandType::LIGHT_OFF);
     this->is_off_ = true;
@@ -134,15 +134,15 @@ void BleAdvLightCww::update_state(light::LightState *state) {
   }
 
   // Compute Corrected Brigtness / Warm Color Temperature (potentially reversed) as float: 0 -> 1
-  float updated_brf = this->get_device_brightness(state->current_values.get_brightness());
-  float updated_ctf = this->get_device_color_temperature(state->current_values.get_color_temperature());
+  float updated_brf = this->get_device_brightness(this->current_values.get_brightness());
+  float updated_ctf = this->get_device_color_temperature(this->current_values.get_color_temperature());
   updated_ctf = this->get_parent()->is_reversed() ? 1.0 - updated_ctf : updated_ctf;
 
   // During transition(current / remote states are not the same), do not process change 
   //    if Brigtness / Color Temperature was not modified enough
   float br_diff = abs(this->brightness_ - updated_brf) * 100;
   float ct_diff = abs(this->warm_color_ - updated_ctf) * 100;
-  bool is_last = (state->current_values == state->remote_values);
+  bool is_last = (this->current_values == this->remote_values);
   if ((br_diff < 3 && ct_diff < 3 && !is_last) || (is_last && br_diff == 0 && ct_diff == 0)) {
     return;
   }
@@ -151,7 +151,7 @@ void BleAdvLightCww::update_state(light::LightState *state) {
   this->warm_color_ = updated_ctf;
 
   if(!this->split_dim_cct_) {
-    light::LightColorValues eff_values = state->current_values;
+    light::LightColorValues eff_values = this->current_values;
     eff_values.set_brightness(updated_brf);
     float cwf, wwf;
     if (this->get_parent()->is_reversed()) {
@@ -178,28 +178,28 @@ Binary Light
 **********************/
 
 void BleAdvLightBinary::dump_config() {
-  ESP_LOGCONFIG(TAG, "BleAdvLight - Binary");
   BleAdvLightBase::dump_config();
+  ESP_LOGCONFIG(TAG, "  BleAdvLight - Binary");
 }
 
 void BleAdvLightBinary::publish_impl(const BleAdvGenCmd & gen_cmd) {
-  light::LightCall call = this->state_->make_call();
+  light::LightCall call = this->make_call();
   call.set_color_mode(light::ColorMode::ON_OFF);
 
   if (gen_cmd.cmd == CommandType::LIGHT_ON) {
-    call.set_state(1.0f).perform();
+    call.set_state(true).perform();
   } else if (gen_cmd.cmd == CommandType::LIGHT_OFF) {
-    call.set_state(0.0f).perform();
+    call.set_state(false).perform();
   } else if (gen_cmd.cmd == CommandType::LIGHT_TOGGLE) {
     bool binary;
-    this->state_->current_values_as_binary(&binary);
+    this->current_values_as_binary(&binary);
     call.set_state(!binary).perform();
   }
 }
 
-void BleAdvLightBinary::update_state(light::LightState *state) {
+void BleAdvLightBinary::control() {
   bool binary;
-  state->current_values_as_binary(&binary);
+  this->current_values_as_binary(&binary);
   if (binary) {
     ESP_LOGD(TAG, "Switch ON");
     this->command(CommandType::LIGHT_ON);

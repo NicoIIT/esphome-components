@@ -53,13 +53,16 @@ public:
   void custom_cmd_float(float cmd, float param, float arg0, float arg1, float arg2);
   void custom_cmd(BleAdvEncCmd & enc_cmd);
   void raw_inject(std::string raw);
+  void set_timer(float duration);
   void cancel_timer();
+  void all_off();
 
   bool enqueue(const BleAdvGenCmd & cmd);
   void enqueue(ble_adv_handler::BleAdvParams && params);
 
 protected:
-  void publish_to_entities(const BleAdvGenCmd & gen_cmd, bool apply_command);
+  void controller_command(const BleAdvGenCmd & gen_cmd);
+  void publish_to_entities(const BleAdvGenCmd & gen_cmd);
   void increase_counter();
 
   uint32_t max_tx_duration_ = 3000;
@@ -89,17 +92,18 @@ protected:
 
   // Publishing commands listened from remotes/phone
   std::vector< BleAdvEntity * > entities_;
+
+  // skip next commands
+  bool skip_commands_{false};
 };
 
 /**
   BleAdvEntity: 
     Base class for implementation of Entities, referencing the parent BleAdvController
  */
-class BleAdvEntity: public Component, public Parented < BleAdvController >
+class BleAdvEntity: public Parented < BleAdvController >
 {
   public:
-    virtual void dump_config() override = 0;
-    virtual void publish(const BleAdvGenCmd & gen_cmd, bool apply_command);
     virtual void publish(const BleAdvGenCmd & gen_cmd) { }
     void init() { this->get_parent()->register_entity(this); }
 
@@ -107,9 +111,6 @@ class BleAdvEntity: public Component, public Parented < BleAdvController >
     void dump_config_base(const char * tag);
     void command(BleAdvGenCmd &gen_cmd);
     virtual void command(CommandType cmd, float value1 = 0, float value2 = 0);
-
-    // skip next commands
-    bool skip_commands_{false};
 };
 
 } //namespace ble_adv_controller

@@ -108,9 +108,9 @@ CONTROLLER_ACTION_CMD_SCHEMA = cv.All(
 @reg_controller_action("custom_cmd", "CustomCmdAction", CONTROLLER_ACTION_CMD_SCHEMA)
 async def custom_cmd_action_to_code(config, action_id, template_arg, args):
     var = await init_controller_action(config, action_id, template_arg)
-    cg.add(var.set_cmd(await cg.templatable(config[CONF_BLE_ADV_CMD], args, cv.uint8_t)))
-    cg.add(var.set_param1(await cg.templatable(config[CONF_BLE_ADV_PARAM1], args, cv.uint8_t)))
-    cg.add(var.set_args(await cg.templatable(config[CONF_BLE_ADV_ARGS], args, cv.ensure_list(cv.uint8_t))))
+    cg.add(var.set_cmd(await cg.templatable(config[CONF_BLE_ADV_CMD], args, cg.uint8)))
+    cg.add(var.set_param1(await cg.templatable(config[CONF_BLE_ADV_PARAM1], args, cg.uint8)))
+    cg.add(var.set_args(await cg.templatable(config[CONF_BLE_ADV_ARGS], args, cg.std_vector(cg.uint8))))
     return var
 
 CONF_BLE_ADV_RAW = "raw"
@@ -124,5 +124,5 @@ CONTROLLER_ACTION_RAW_SCHEMA = cv.All(
 @reg_controller_action("raw_inject", "RawInjectAction", CONTROLLER_ACTION_RAW_SCHEMA)
 async def raw_inject_action_to_code(config, action_id, template_arg, args):
     var = await init_controller_action(config, action_id, template_arg)
-    cg.add(var.set_raw(await cg.templatable(config[CONF_BLE_ADV_RAW], args, cv.string)))
+    cg.add(var.set_raw(await cg.templatable(config[CONF_BLE_ADV_RAW], args, cg.string)))
     return var

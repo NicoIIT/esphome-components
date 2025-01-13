@@ -7,10 +7,10 @@ from esphome.const import (
     CONF_COLD_WHITE_COLOR_TEMPERATURE,
     CONF_WARM_WHITE_COLOR_TEMPERATURE,
     CONF_MIN_BRIGHTNESS,
-    CONF_OUTPUT_ID,
     CONF_DEFAULT_TRANSITION_LENGTH,
     CONF_RESTORE_MODE,
     CONF_TYPE,
+    CONF_ID,
 )
 
 from .. import (
@@ -39,7 +39,7 @@ CONFIG_SCHEMA = cv.All(
         # BACKWARD COMPATIBILITY: Secondary light with no type, force type to 'onoff'
         light.RGB_LIGHT_SCHEMA.extend(
             {
-                cv.GenerateID(CONF_OUTPUT_ID): cv.declare_id(BleAdvLightBinary),
+                cv.GenerateID(): cv.declare_id(BleAdvLightBinary),
                 cv.Optional(CONF_TYPE, default='onoff'): cv.one_of('onoff'),
                 cv.Required(CONF_BLE_ADV_SECONDARY): cv.one_of(True),
             }
@@ -48,7 +48,7 @@ CONFIG_SCHEMA = cv.All(
         # Cold / Warm / WHite Light
         light.RGB_LIGHT_SCHEMA.extend(
             {
-                cv.GenerateID(CONF_OUTPUT_ID): cv.declare_id(BleAdvLightCww),
+                cv.GenerateID(): cv.declare_id(BleAdvLightCww),
                 cv.Optional(CONF_TYPE, default='cww'): cv.one_of('cww'),
                 cv.Optional(CONF_BLE_ADV_SECONDARY, default=False): cv.boolean,
                 cv.Optional(CONF_COLD_WHITE_COLOR_TEMPERATURE, default="167 mireds"): cv.color_temperature,
@@ -64,7 +64,7 @@ CONFIG_SCHEMA = cv.All(
         # Binary Light
         light.RGB_LIGHT_SCHEMA.extend(
             {
-                cv.GenerateID(CONF_OUTPUT_ID): cv.declare_id(BleAdvLightBinary),
+                cv.GenerateID(): cv.declare_id(BleAdvLightBinary),
                 cv.Required(CONF_TYPE): cv.one_of('onoff'),
                 cv.Optional(CONF_BLE_ADV_SECONDARY, default=False): cv.boolean,
             }
@@ -77,9 +77,10 @@ CONFIG_SCHEMA = cv.All(
 )
 
 async def to_code(config):
-    var = cg.new_Pvariable(config[CONF_OUTPUT_ID])
+    var = cg.new_Pvariable(config[CONF_ID])
     await entity_base_code_gen(var, config)
-    await light.register_light(var, config)
+    cg.add(cg.App.register_light(var))
+    await light.setup_light_core_(var, var, config)
     cg.add(var.set_secondary(config[CONF_BLE_ADV_SECONDARY]))
     if config[CONF_TYPE] == 'onoff':
         cg.add(var.set_traits())
