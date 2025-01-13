@@ -10,6 +10,7 @@ class BleAdvLightBase : public light::LightOutput, public light::LightState, pub
 {
  public:
   BleAdvLightBase(): light::LightState(this) {}
+  void setup() override { light::LightState::setup(); };
   void dump_config() override;
   void write_state(light::LightState *state) override {};
   light::LightTraits get_traits() override { return this->traits_; }

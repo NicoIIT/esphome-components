@@ -48,6 +48,7 @@ void BleAdvLightCww::set_traits(float cold_white_temperature, float warm_white_t
 }
 
 void BleAdvLightCww::setup() {
+  BleAdvLightBase::setup();
   if (this->get_parent()->is_show_config()) {
     this->number_min_brightness_.init("Min Brightness", this->get_name());
   }
