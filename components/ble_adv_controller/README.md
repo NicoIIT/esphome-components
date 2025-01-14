@@ -180,6 +180,16 @@ All variables of standard fan are also available, see [ESPHome doc](https://esph
 ## Configuration for Button
 The ble_adv_button has been REMOVED as the features are now available as ble_adv_controller actions and can then be called with a standard 'template' button and its 'on_press' trigger.
 
+Example for PAIR Button:
+```yaml
+button:
+  - platform: template
+    name: Pair
+    entity_category: config
+    on_press:
+      ble_adv_controller.pair: my_controller
+```
+
 ## Good to know
 
 ### Dynamic configuration
