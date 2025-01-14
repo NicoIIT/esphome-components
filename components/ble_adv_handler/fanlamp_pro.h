@@ -22,7 +22,8 @@ class FanLampEncoderV1: public FanLampEncoder
 {
 public:
   FanLampEncoderV1(const std::string & encoding, const std::string & variant,
-                    uint8_t pair_arg3, bool pair_arg_only_on_pair = true, bool xor1 = false, uint8_t supp_prefix = 0x00);
+                    uint8_t pair_arg3, bool pair_arg_only_on_pair = true, bool xor1 = false, 
+                    uint8_t supp_prefix = 0x00, uint16_t forced_crc16_2 = 0x0000);
 
 protected:
   static constexpr size_t ARGS_LEN = 3;
@@ -46,6 +47,7 @@ protected:
   bool pair_arg_only_on_pair_;
   bool with_crc2_;
   bool xor1_;
+  uint16_t forced_crc16_2_;
 };
 
 class FanLampEncoderV2: public FanLampEncoder

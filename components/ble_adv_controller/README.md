@@ -1,7 +1,7 @@
 # ble_adv_controller
 
 ## Description
-Allows to control devices using BLE ADV protocol.
+Allows to control devices using BLE ADV protocol. Needs `ble_adv_handler` (forced include) to work.
 
 ## Main Variables
 - **encoding** (Required): the encoding, can be any of:
@@ -337,7 +337,3 @@ The technical solution implemented by manufacturers to control those devices is 
   * If the value is too high, each command is queued one after the other and then sending commands at a high rate will make delay more and more the commands.
   * The use of ESPHome light `transitions` is not recommended (and deactivated by default) as it generates high command rate. A mitigation has been implemented in order to remove commands of the same type from the processing queue when a new one is received, it seriously improves the behavior of the component but it is still not perfect.
 * Some commands are the same for ON and OFF, working as a Toggle in fact. Sending high rate commands will cause the mix of ON and OFF commands and result in flickering and desynchronization of states.
-
-## Known issues and not implemented or tested features
-* Does not support RGB lights for now, request it if needed.
-* ZhiJia encoding v0 and v1 (may be needed for older version of Lamps controlled with ZhiJia app) have not been tested (as no end user available to test it and help debugging) and then may not work. Contact us if you have such device and we will make it work together!

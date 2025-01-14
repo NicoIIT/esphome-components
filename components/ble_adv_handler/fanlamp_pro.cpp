@@ -21,9 +21,9 @@ uint16_t FanLampEncoder::crc16(uint8_t* buf, size_t len, uint16_t seed) const {
 }
 
 FanLampEncoderV1::FanLampEncoderV1(const std::string & encoding, const std::string & variant, uint8_t pair_arg3,
-                                    bool pair_arg_only_on_pair, bool xor1, uint8_t supp_prefix):
+                                    bool pair_arg_only_on_pair, bool xor1, uint8_t supp_prefix, uint16_t forced_crc16_2):
           FanLampEncoder(encoding, variant, {0xAA, 0x98, 0x43, 0xAF, 0x0B, 0x46, 0x46, 0x46}), pair_arg3_(pair_arg3), pair_arg_only_on_pair_(pair_arg_only_on_pair), 
-              with_crc2_(supp_prefix == 0x00), xor1_(xor1) {
+              with_crc2_(supp_prefix == 0x00 || forced_crc16_2 != 0), xor1_(xor1), forced_crc16_2_(forced_crc16_2) {
   if (supp_prefix != 0x00) this->prefix_.insert(this->prefix_.begin(), supp_prefix);
   this->len_ = this->prefix_.size() + sizeof(data_map_t) + (this->with_crc2_ ? 2 : 1);
 }
@@ -61,10 +61,14 @@ bool FanLampEncoderV1::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPa
   }
 
   if (this->with_crc2_) {
-    uint16_t crc16_mac = this->crc16(buf + 1, 5, 0xffff);
-    uint16_t crc16_2 = htons(this->crc16(buf + data_start, sizeof(data_map_t), crc16_mac));
     uint16_t crc16_data_2 = *(uint16_t*) &buf[this->len_ - 2];
-    ENSURE_EQ(crc16_data_2, crc16_2, "Decoded KO (crc16_2) - %s", decoded.c_str());
+    if (this->forced_crc16_2_ != 0x00) {
+      ENSURE_EQ(crc16_data_2, this->forced_crc16_2_, "Decoded KO (forced_crc16_2) - %s", decoded.c_str());
+    } else {
+      uint16_t crc16_mac = this->crc16(buf + 1, 5, 0xffff);
+      uint16_t crc16_2 = htons(this->crc16(buf + data_start, sizeof(data_map_t), crc16_mac));
+      ENSURE_EQ(crc16_data_2, crc16_2, "Decoded KO (crc16_2) - %s", decoded.c_str());
+    }
   }
 
   uint8_t rem_id = data->src ^ seed8;
@@ -108,8 +112,12 @@ void FanLampEncoderV1::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPa
   
   if (this->with_crc2_) {
     uint16_t* crc16_2 = (uint16_t*) &buf[this->len_ - 2];
-    uint16_t crc_mac = this->crc16(buf + 1, 5, 0xffff);
-    *crc16_2 = htons(this->crc16((uint8_t*)(data), sizeof(data_map_t), crc_mac));
+    if (this->forced_crc16_2_) {
+      *crc16_2 = this->forced_crc16_2_;
+    } else {
+      uint16_t crc_mac = this->crc16(buf + 1, 5, 0xffff);
+      *crc16_2 = htons(this->crc16((uint8_t*)(data), sizeof(data_map_t), crc_mac));
+    }
   } else {
     buf[this->len_ - 1] = 0xAA;
   }

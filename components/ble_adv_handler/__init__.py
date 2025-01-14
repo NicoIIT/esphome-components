@@ -158,8 +158,8 @@ ZhimeiCommonTranslator = [
     trans_cmd(CT.TIMER, 0xA5) | zhimei_timer(),
     trans_cmd(CT.LIGHT_ON, 0xB3),
     trans_cmd(CT.LIGHT_OFF, 0xB2),
-    trans_cmd(CT.LIGHT_SEC_ON, 0xA6, {}, {"args[0]":1}),
-    trans_cmd(CT.LIGHT_SEC_OFF, 0xA6, {}, {"args[0]":2}),
+    trans_cmd(CT.LIGHT_SEC_ON, 0xA6, {}, {"args[0]":2}),
+    trans_cmd(CT.LIGHT_SEC_OFF, 0xA6, {}, {"args[0]":1}),
     trans_cmd(CT.LIGHT_SEC_RGB_RGB, 0xCA) | multi_args(255),
     trans_cmd(CT.LIGHT_DIM, 0xB5, {"param":0}) | zhijia_v0_multi_args(),
     trans_cmd(CT.LIGHT_CCT, 0xB7, {"param":0}) | zhijia_v0_multi_args_reverse(),
@@ -414,14 +414,14 @@ BLE_ADV_ENCODERS = {
     },
     "remote" : {
         "variants": {
-            # Not working
-            # "v1": {
-            #     "class": FanLampEncoderV1, 
-            #     "args": [ 0x83, False, True ],
-            #     "max_forced_id": 0xFFFFFF,
-            #     "ble_param": [ 0x00, 0xFF ],
-            #     "header":[0x56, 0x55, 0x18, 0x87, 0x52], 
-            # },
+            "v1": {
+                "class": FanLampEncoderV1, 
+                "args": [ 0x83, False, True, 0x00, 0x7293 ],
+                "max_forced_id": 0xFFFFFF,
+                "ble_param": [ 0x00, 0xFF ],
+                "header":[0x56, 0x55, 0x18, 0x87, 0x52],
+                # 1E.FF.56.55.18.87.52.B6.5F.2B.5E.00.FC.31.51.50.50.9A.08.24.0A.EC.FC.A9.7B.8E.0D.4A.67.60.57
+            },
             "v3": {
                 "class": FanLampEncoderV2,
                 "args": [ [0x10, 0x00, 0x56], 0x0400, True ],
