@@ -19,6 +19,7 @@ Needs `ble_adv_handler` (forced include) to work.
     - 'zhimei', for 'ZhiMeiDengKong' app
     - 'fanlamp_pro', for 'FanLamp Pro' app or 'ApplianceSmart' App
     - 'lampsmart_pro', for 'LampSmart Pro' App, 'LampSmart Pro-Soft Lighting' App or 'Vmax smart' App
+    - 'agarce', for 'Smart Light' App
     - 'remote', for some of the remotes we know
     - 'other', for legacy variants from initial repos, may correspond to removed app 'FanLamp' or 'ControlSwitch'
 
@@ -29,6 +30,7 @@ Needs `ble_adv_handler` (forced include) to work.
     - For 'zhimei': Can be v0 , v1, v1b or v2, default is v1
     - For 'fanlamp_pro': Can be any of v1, v2 or v3, default is v3
     - For 'lampsmart_pro': Can be v1, v2 or v3, default is v3
+    - For 'agarce': Can be v3 or v4, default is v4
     - For 'remote': can be v1 or v3 (only remotes we know for now..), default is v3
     - For 'other': Can be any of v1a / v1b / v2 / v3, they are corresponding to legacy variants extracted from old version of this repo.
     The variant can be configured dynamically in HA directly, device 'Configuration' section, "Encoding".
@@ -56,6 +58,14 @@ Needs `ble_adv_handler` (forced include) to work.
     - **id**: the controller id
 - **unpair**:
   - Description: TRIES to unpair the configured controller from the controlled device by issuing an UNPAIR command. It may work or not, depending on the device and the knowledge of the controller protocol.
+  - Options:
+    - **id**: the controller id
+- **all_on**:
+  - Description: equivalent to turn on all fan / lights associated to this controller.
+  - Options:
+    - **id**: the controller id
+- **all_off**:
+  - Description: equivalent to turn off all fan / lights associated to this controller.
   - Options:
     - **id**: the controller id
 - **cancel_timer**:
@@ -161,7 +171,7 @@ fan:
 - **name** (Required), the name of the entity as it will appear in HA
 - **type** (Optional, Default: 'cww') must be 'cww' for this light if specified
 - **secondary** (Optional, Default: False) True if this is not the primary but the secondary light
-- **min_brightness** (Optional, Default: 2%) % minimum brightness supported by the light before it shuts done. Just setup this value to 0, then test your lamp by decreasing the brightness percent by percent, when it switches off, you have the min_brightness to setup here. Can be setup using Dynamic Configuration
+- **min_brightness** (Optional, Default: 2%) % minimum brightness supported by the light before it shuts done. Just setup this value to 0, then test your lamp by decreasing the brightness percent by percent, when it switches off, you have the min_brightness to setup here. Can be setup using Dynamic Configuration. To be set to 0 for 'Smart Lights' devices.
 - **separate_dim_cct** (Optional, Default: False). Use separate commands to control Brightness and Color Temperature of the device. Needed by some ZhiJia and ZhiMei lamps not supporting standard command.
 
 All variables of standard light are also available, see [ESPHome doc](https://esphome.io/components/light/). In particular you may be interested by `constant_brightness` or `default_transition_length`

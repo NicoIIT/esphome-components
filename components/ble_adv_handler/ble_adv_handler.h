@@ -28,8 +28,9 @@ enum CommandType {
   PAIR = 1,
   UNPAIR = 2,
   CUSTOM = 3,
-  ALL_OFF = 4,
-  TIMER = 5,
+  ALL_ON = 4,
+  ALL_OFF = 5,
+  TIMER = 6,
   // Light Commands: 11 -> 20
   LIGHT_ON = 11,
   LIGHT_OFF = 12,
@@ -39,6 +40,7 @@ enum CommandType {
   LIGHT_TOGGLE = 16,
   LIGHT_RGB_RGB = 17,
   LIGHT_RGB_DIM = 18,
+  LIGHT_DIM_CCT = 19,
   // Secondary Light Commands: 21 -> 30
   LIGHT_SEC_ON = 21,
   LIGHT_SEC_OFF = 22,
@@ -48,12 +50,22 @@ enum CommandType {
   LIGHT_SEC_TOGGLE = 26,
   LIGHT_SEC_RGB_RGB = 27,
   LIGHT_SEC_RGB_DIM = 28,
+  LIGHT_SEC_DIM_CCT = 29,
   // Fan Commands: 31 -> 40
+  FAN_ON = 31,
+  FAN_FULL = 32,
   FAN_ONOFF_SPEED = 33,
   FAN_DIR = 34,
   FAN_OSC = 35,
   FAN_DIR_TOGGLE = 36,
   FAN_OSC_TOGGLE = 37,
+};
+
+enum FanSubCmdType {
+  STATE = 0x01,
+  SPEED = 0x02,
+  DIR = 0x04,
+  OSC = 0x08,
 };
 
 /**
@@ -62,6 +74,7 @@ enum CommandType {
 struct ControllerParam_t {
   uint32_t id_ = 0;
   uint8_t tx_count_ = 0;
+  uint8_t app_restart_count_ = 0;
   uint8_t index_ = 0;
   uint16_t seed_ = 0;
 };
@@ -129,8 +142,10 @@ public:
   std::string str() const;
 
   bool is_controller_cmd() const { return (this->cmd <= 10); }
-  bool is_light_cmd() const { return (this->cmd > 10) && (this->cmd <= 20); }
-  bool is_sec_light_cmd() const { return (this->cmd > 20) && (this->cmd <= 30); }
+  bool is_light_cmd(bool secondary = false) const { 
+    if(secondary) return (this->cmd > 20) && (this->cmd <= 30);
+    return (this->cmd > 10) && (this->cmd <= 20);
+  }
   bool is_fan_cmd() const { return (this->cmd > 30) && (this->cmd <= 40); }
 
   CommandType cmd;
@@ -141,7 +156,8 @@ public:
 class BleAdvEncCmd
 {
 public:
-  BleAdvEncCmd(uint8_t acmd = 0): cmd(acmd) {}
+  static constexpr uint8_t ENC_NO_CMD = 0xFF;
+  BleAdvEncCmd(uint8_t acmd = ENC_NO_CMD): cmd(acmd) {}
   std::string str() const;
   uint8_t cmd;
   uint8_t param1 = 0;
@@ -190,6 +206,7 @@ protected:
   uint8_t reverse_byte(uint8_t byte) const;
   void reverse_all(uint8_t* buf, uint8_t len) const;
   void whiten(uint8_t *buf, size_t len, uint8_t seed) const;
+  uint8_t checksum(uint8_t * buf, size_t len) const;
 
   // encoder identifiers
   std::string id_;

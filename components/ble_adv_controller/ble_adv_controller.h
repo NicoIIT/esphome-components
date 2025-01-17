@@ -55,6 +55,7 @@ public:
   void raw_inject(std::string raw);
   void set_timer(float duration);
   void cancel_timer();
+  void all_on();
   void all_off();
 
   bool enqueue(const BleAdvGenCmd & cmd);

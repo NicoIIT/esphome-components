@@ -30,6 +30,16 @@ public:
   void play(Ts... x) override { this->controller_->unpair(); }
 };
 
+template<typename... Ts> class AllOnAction : public BaseControllerAction<Ts...> {
+public:
+  void play(Ts... x) override { this->controller_->allon(); }
+};
+
+template<typename... Ts> class AllOffAction : public BaseControllerAction<Ts...> {
+public:
+  void play(Ts... x) override { this->controller_->alloff(); }
+};
+
 template<typename... Ts> class CustomCmdAction : public BaseControllerAction<Ts...> {
 public:
   TEMPLATABLE_VALUE(uint8_t, cmd)

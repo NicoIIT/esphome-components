@@ -20,14 +20,6 @@ std::string RemoteEncoder::to_str(const BleAdvEncCmd & enc_cmd) const {
   return ret;
 }
 
-uint8_t RemoteEncoder::checksum(uint8_t * buf, size_t len) const {
-  uint8_t ck = 0;
-  for (size_t i = 0; i < len; ++i) {
-    ck += buf[i];
-  }
-  return ck & 0xFF;
-}
-
 bool RemoteEncoder::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   data_map_t * data = (data_map_t *) (buf);
   if (data->checksum != this->checksum(buf, this->len_ - 1)) return false;

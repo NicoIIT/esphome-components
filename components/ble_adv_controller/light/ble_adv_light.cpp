@@ -22,9 +22,7 @@ void BleAdvLightBase::command(CommandType cmd, float value1, float value2, float
 
 void BleAdvLightBase::publish(const BleAdvGenCmd & gen_cmd) {
   // Do not process if the light is not the target
-  if (!gen_cmd.is_sec_light_cmd() && !gen_cmd.is_light_cmd()) return; // Not a Light command, secondary or not
-  if ( gen_cmd.is_sec_light_cmd() && !this->secondary_) return;       // Secondary command, but not secondary light
-  if ( gen_cmd.is_light_cmd()     && this->secondary_) return;        // Primary command, but not primary light
+  if (!gen_cmd.is_light_cmd(this->secondary_)) return;
 
   // Rewrite command if secondary
   BleAdvGenCmd gen_cmd_rew = gen_cmd;
@@ -115,6 +113,10 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
     call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[1] / (gen_cmd.args[0] + gen_cmd.args[1])));
     call.set_brightness(this->get_ha_brightness(std::max(gen_cmd.args[0], gen_cmd.args[1])));
     call.perform();
+  } else if (gen_cmd.cmd == CommandType::LIGHT_DIM_CCT) {
+    call.set_color_temperature(this->get_ha_color_temperature(1.0 - gen_cmd.args[0]));
+    call.set_brightness(this->get_ha_brightness(gen_cmd.args[1]));
+    call.perform();
   }
 }
 
@@ -138,7 +140,6 @@ void BleAdvLightCww::control() {
   float updated_brf = this->get_device_brightness(this->current_values.get_brightness());
   float updated_ctf = this->get_device_color_temperature(this->current_values.get_color_temperature());
   updated_ctf = this->get_parent()->is_reversed() ? 1.0 - updated_ctf : updated_ctf;
-
   // During transition(current / remote states are not the same), do not process change 
   //    if Brigtness / Color Temperature was not modified enough
   float br_diff = abs(this->brightness_ - updated_brf) * 100;
@@ -162,6 +163,7 @@ void BleAdvLightCww::control() {
     }
     ESP_LOGD(TAG, "Updating Cold: %.0f%%, Warm: %.0f%%", cwf*100, wwf*100);
     this->command(CommandType::LIGHT_WCOLOR, cwf, wwf);
+    this->command(CommandType::LIGHT_DIM_CCT, 1.0 - updated_ctf, updated_brf);
   } else {
     if (ct_diff != 0) {
       ESP_LOGD(TAG, "Updating warm color temperature: %.0f%%", updated_ctf*100);

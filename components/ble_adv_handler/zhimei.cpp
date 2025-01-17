@@ -92,9 +92,6 @@ bool ZhimeiEncoderV1::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
     ENSURE_EQ(data->tx_count, data->tx2, "Decoded KO (Dupe 2/10)");
   }
 
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ESP_LOGD(this->id_.c_str(), "Decoded  - %s", decoded.c_str());
-
   ENSURE_EQ(crc16, data->crc16, "Decoded KO (CRC)");
   ENSURE_EQ(data->ff0, 0xFF, "Decoded KO (0 not FF)");
   ENSURE_EQ(data->ff9, 0xFF, "Decoded KO (9 not FF)");
@@ -131,9 +128,6 @@ void ZhimeiEncoderV1::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
     data->padding[i] = this->len_ - PAD_LEN + i;
   }
 
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ESP_LOGD(this->id_.c_str(), "Encoded  - %s", decoded.c_str());
-
   uint8_t data_len = this->len_ - PAD_LEN;
   if (enc_cmd.cmd != 0xB4) {
     this->encrypt(buf + 9, 5, 10);
@@ -159,9 +153,6 @@ uint16_t ZhimeiEncoderV2::crc16(uint8_t* buf, size_t len) const {
 bool ZhimeiEncoderV2::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   this->whiten(buf, this->len_ - PAD_LEN, 0x48);
   if (!std::equal(buf, buf + PREFIX_LEN, PREFIX)) return false;
-
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ESP_LOGD(this->id_.c_str(), "Decoded  - %s", decoded.c_str());
 
   data_map_t * data = (data_map_t *) buf;
 
@@ -207,9 +198,6 @@ void ZhimeiEncoderV2::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   std::copy(PREFIX, PREFIX + PREFIX_LEN, data->prefix);
 
   data->crc16 = this->crc16(buf, this->len_ - PAD_LEN - 2);
-
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ESP_LOGD(this->id_.c_str(), "Encoded  - %s", decoded.c_str());
 
   this->whiten(buf, this->len_ - PAD_LEN, 0x48);
 }

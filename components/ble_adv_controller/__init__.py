@@ -90,6 +90,8 @@ CONTROLLER_ACTION_SCHEMA = maybe_simple_id(
 @reg_controller_action("cancel_timer", "CancelTimerAction", CONTROLLER_ACTION_SCHEMA)
 @reg_controller_action("pair", "PairAction", CONTROLLER_ACTION_SCHEMA)
 @reg_controller_action("unpair", "UnPairAction", CONTROLLER_ACTION_SCHEMA)
+@reg_controller_action("all_on", "AllOnAction", CONTROLLER_ACTION_SCHEMA)
+@reg_controller_action("all_off", "AllOffAction", CONTROLLER_ACTION_SCHEMA)
 async def controller_simple_action_to_code(config, action_id, template_arg, args):
     return await init_controller_action(config, action_id, template_arg)
 

@@ -20,6 +20,7 @@ Supported apps:
 * Zhi Jia
 * Zhi Guang
 * ZhiMeiDengKong
+* Smart Light (Only the control by device, not the Master Control)
 * Other (Legacy), removed app from play store: 'FanLamp', 'ControlSwitch'
 
 ## Components

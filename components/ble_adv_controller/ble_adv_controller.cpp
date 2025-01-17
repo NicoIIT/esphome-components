@@ -18,6 +18,7 @@ void BleAdvController::setup() {
 #ifdef USE_API
   register_service(&BleAdvController::pair, "pair_" + this->get_object_id());
   register_service(&BleAdvController::unpair, "unpair_" + this->get_object_id());
+  register_service(&BleAdvController::all_on, "all_on_" + this->get_object_id());
   register_service(&BleAdvController::all_off, "all_off_" + this->get_object_id());
   register_service(&BleAdvController::set_timer, "set_timer_" + this->get_object_id(), {"duration"});
   register_service(&BleAdvController::custom_cmd_float, "cmd_" + this->get_object_id(), {"cmd", "param", "arg0", "arg1", "arg2"});
@@ -53,7 +54,15 @@ void BleAdvController::unpair() {
 }
 
 void BleAdvController::all_off() {
-  this->controller_command(CommandType::ALL_OFF);
+  this->publish_to_entities(CommandType::LIGHT_OFF);
+  this->publish_to_entities(CommandType::LIGHT_SEC_OFF);
+  this->publish_to_entities(CommandType::FAN_ONOFF_SPEED);
+}
+
+void BleAdvController::all_on() {
+  this->publish_to_entities(CommandType::LIGHT_ON);
+  this->publish_to_entities(CommandType::LIGHT_SEC_ON);
+  this->publish_to_entities(CommandType::FAN_ON);
 }
 
 void BleAdvController::set_timer(float duration) {  // duration is the number of minutes
@@ -107,10 +116,8 @@ void BleAdvController::publish(const BleAdvGenCmd & gen_cmd, bool apply_command)
     this->set_timer(gen_cmd.args[0]);
   } else if (gen_cmd.cmd == CommandType::ALL_OFF) {
     this->all_off();
-    this->skip_commands_ = true; // only apply the change of state
-    this->publish_to_entities(CommandType::LIGHT_OFF);
-    this->publish_to_entities(CommandType::LIGHT_SEC_OFF);
-    this->publish_to_entities(CommandType::FAN_ONOFF_SPEED);
+  } else if (gen_cmd.cmd == CommandType::ALL_ON) {
+    this->all_on();
   } else if (!gen_cmd.is_controller_cmd()) {
     this->publish_to_entities(gen_cmd);
   }
@@ -124,9 +131,13 @@ void BleAdvController::publish_to_entities(const BleAdvGenCmd & gen_cmd) {
 }
 
 void BleAdvController::increase_counter() {
+  if (this->params_.app_restart_count_ == 0) {
+    this->params_.app_restart_count_ = rand() & 0xFF;
+  }
   // Reset tx count if near the limit
   if (this->params_.tx_count_ > 126) {
     this->params_.tx_count_ = 0;
+    this->params_.app_restart_count_ += 1;
   }
   this->params_.tx_count_++;
 }

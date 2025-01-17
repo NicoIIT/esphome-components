@@ -82,9 +82,16 @@ bool BleAdvParam::is_data_equal(const BleAdvParam & comp) const{
 }
 
 std::string BleAdvGenCmd::str() const {
-  char ret[100]{0};
+  char ret_full[100]{0};
   size_t ind = 0;
-  switch(this->cmd) {
+  char * ret = ret_full;
+  CommandType acmd = this->cmd;
+  if (this->is_light_cmd(true)) {
+    acmd = (CommandType)((uint16_t)this->cmd - 10);
+    ind = std::sprintf(ret, "Secondary - ");
+    ret = ret_full + ind;
+  }
+  switch(acmd) {
     case CommandType::PAIR:
       ind = std::sprintf(ret, "PAIR");
       break;
@@ -93,6 +100,9 @@ std::string BleAdvGenCmd::str() const {
       break;
     case CommandType::CUSTOM:
       ind = std::sprintf(ret, "CUSTOM");
+      break;
+    case CommandType::ALL_ON:
+      ind = std::sprintf(ret, "ALL_ON");
       break;
     case CommandType::ALL_OFF:
       ind = std::sprintf(ret, "ALL_OFF");
@@ -136,20 +146,11 @@ std::string BleAdvGenCmd::str() const {
     case CommandType::LIGHT_RGB_DIM:
       ind = std::sprintf(ret, "LIGHT_RGB_DIM - %.0f%%", this->args[0] * 100);
       break;
-    case CommandType::LIGHT_SEC_ON:
-      ind = std::sprintf(ret, "LIGHT_SEC_ON");
+    case CommandType::LIGHT_DIM_CCT:
+      ind = std::sprintf(ret, "LIGHT_DIM_CCT - cold: %.0f%%, brightness: %.0f%%", this->args[0] * 100, this->args[1] * 100);
       break;
-    case CommandType::LIGHT_SEC_OFF:
-      ind = std::sprintf(ret, "LIGHT_SEC_OFF");
-      break;
-    case CommandType::LIGHT_SEC_TOGGLE:
-      ind = std::sprintf(ret, "LIGHT_SEC_TOGGLE");
-      break;
-    case CommandType::LIGHT_SEC_RGB_RGB:
-      ind = std::sprintf(ret, "LIGHT_SEC_RGB_RGB - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
-      break;
-    case CommandType::LIGHT_SEC_RGB_DIM:
-      ind = std::sprintf(ret, "LIGHT_SEC_RGB_DIM - %.0f%%", this->args[0] * 100);
+    case CommandType::FAN_FULL:
+      ind = std::sprintf(ret, "FAN_FULL/0x%X - %0.f/%0.f/%0.f", this->param, this->args[0], this->args[1], this->args[2]);
       break;
     case CommandType::FAN_ONOFF_SPEED:
       ind = std::sprintf(ret, "FAN_ONOFF_SPEED - %0.f/%0.f", this->args[0], this->args[1]);
@@ -170,7 +171,7 @@ std::string BleAdvGenCmd::str() const {
       ind = std::sprintf(ret, "UNKNOWN - %d", this->cmd);
       break;
   }
-  return ret;
+  return ret_full;
 }
 
 std::string BleAdvEncCmd::str() const {
@@ -183,7 +184,7 @@ std::string BleAdvEncCmd::str() const {
 void BleAdvEncoder::translate_g2e(std::vector< BleAdvEncCmd > & enc_cmds, const BleAdvGenCmd & gen_cmd) const {
   BleAdvEncCmd enc_cmd;
   this->translator_->g2e_cmd(gen_cmd, enc_cmd);
-  if (enc_cmd.cmd != 0) {
+  if (enc_cmd.cmd != BleAdvEncCmd::ENC_NO_CMD) {
     enc_cmds.emplace_back(std::move(enc_cmd));
   }
 }
@@ -247,6 +248,14 @@ void BleAdvEncoder::reverse_all(uint8_t* buf, uint8_t len) const {
   for (size_t i = 0; i < len; ++i) {
     buf[i] = reverse_byte(buf[i]);
   }
+}
+
+uint8_t BleAdvEncoder::checksum(uint8_t * buf, size_t len) const {
+  uint8_t ck = 0;
+  for (size_t i = 0; i < len; ++i) {
+    ck += buf[i];
+  }
+  return ck & 0xFF;
 }
 
 void BleAdvHandler::setup() {

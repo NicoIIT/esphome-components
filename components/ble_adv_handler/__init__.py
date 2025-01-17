@@ -40,11 +40,13 @@ ZhijiaEncoderV0 = bleadvhandler_ns.class_('ZhijiaEncoderV0')
 ZhijiaEncoderV1 = bleadvhandler_ns.class_('ZhijiaEncoderV1')
 ZhijiaEncoderV2 = bleadvhandler_ns.class_('ZhijiaEncoderV2')
 RemoteEncoder = bleadvhandler_ns.class_('RemoteEncoder')
+AgarceEncoder = bleadvhandler_ns.class_('AgarceEncoder')
 ZhimeiEncoderV0 = bleadvhandler_ns.class_('ZhimeiEncoderV0')
 ZhimeiEncoderV1 = bleadvhandler_ns.class_('ZhimeiEncoderV1')
 ZhimeiEncoderV2 = bleadvhandler_ns.class_('ZhimeiEncoderV2')
 
 CT = bleadvhandler_ns.enum('CommandType')
+FST = bleadvhandler_ns.enum('FanSubCmdType')
 BleAdvEncCmd = bleadvhandler_ns.class_('BleAdvEncCmd')
 BleAdvGenCmd = bleadvhandler_ns.class_('BleAdvGenCmd')
 CommandTranslator = bleadvhandler_ns.class_('CommandTranslator')
@@ -80,6 +82,14 @@ def zhimei_timer():
 def fanlamp_rgb():
     return { "raw_g2e": f"e.param1 = (uint8_t)(g.args[0] * 255); e.args[0] = (uint8_t)(g.args[1] * 255); e.args[1] = (uint8_t)(g.args[2] * 255); ",
              "raw_e2g": f"g.args[0] = ((float)e.param1) / (255.f); g.args[1] = ((float)e.args[0]) / (255.f); g.args[2] = ((float)e.args[1]) / (255.f); " }
+
+def agarce_fanfull():
+    # Holy CRAP !!!!
+    trans =  { "raw_g2e": f"e.args[0] = ((g.args[0] > 0) ? 0x80 : 0x00) | ((int) g.args[0]) | (g.args[1] ? 0x10 : 0x00); e.args[1] = g.args[2]; ",
+               "raw_e2g": f"g.args[0] = (e.args[0] & 0x80) ? e.args[0] & 0x0F : 0; g.args[1] = (e.args[0] & 0x10) > 0; g.args[2] = e.args[1]; " }
+    trans["raw_g2e"] += f"e.args[2] = ((g.param & {FST.SPEED} || (g.args[0] > 0)) ? 0x01:0 ) | (g.param & {FST.DIR} ? 0x02:0 | (g.param & {FST.STATE} ? 0x08:0) | (g.param & {FST.OSC} ? 0x10:0)); "
+    trans["raw_e2g"] += f"g.param = ((e.args[2] & 0x01) ? {FST.SPEED}:0) | (e.args[2] & 0x02 ? {FST.DIR}:0) | (e.args[2] & 0x08 ? {FST.STATE}:0) | (e.args[2] & 0x10 ? {FST.OSC}:0); "
+    return trans
 
 def trans_cmd(gcmd, ecmd, gsupp = {}, esupp = {}):
     return {"g": { "cmd": gcmd } | gsupp, "e": { "cmd" : ecmd } | esupp}
@@ -215,6 +225,16 @@ class TranslatorGenerator():
             trans_cmd(CT.LIGHT_DIM, 0x03, {"param":2}) | multi_args(), # B-
             trans_cmd(CT.LIGHT_WCOLOR, 0x07, {"param":2}), # CCT / brightness Cycle
         ],
+        str(AgarceEncoder): [
+            trans_cmd(CT.PAIR, 0x00, {}, {"args[0]":1}),
+            trans_cmd(CT.UNPAIR, 0x00, {}, {"args[0]":0}),
+            trans_cmd(CT.ALL_OFF, 0x70) | {"cond_e2g" : f"e.args[0] < 2"},
+            trans_cmd(CT.ALL_ON, 0x70) | {"cond_e2g" : f"e.args[0] >= 2"},
+            trans_cmd(CT.LIGHT_ON, 0x10, {}, {"args[0]":1}),
+            trans_cmd(CT.LIGHT_OFF, 0x10, {}, {"args[0]":0}),
+            trans_cmd(CT.LIGHT_DIM_CCT, 0x20) | multi_args(100),
+            trans_cmd(CT.FAN_FULL, 0x80) | agarce_fanfull(),
+        ],
         str(ZhimeiEncoderV0): [
             *ZhimeiCommonTranslator,
             trans_cmd(CT.PAIR, 0xB4, {}, {"args[0]":170, "args[1]":102, "args[2]":85}),
@@ -248,6 +268,8 @@ class TranslatorGenerator():
         cl += f"\n  void g2e_cmd(const {BleAdvGenCmd} & g, {BleAdvEncCmd} & e) const override {{"
         for conds in translators:
             if_cond = " && ".join([f"(g.{attr} == {val})" for (attr, val) in conds["g"].items()])
+            if "cond_g2e" in conds:
+                if_cond += " && " + conds["cond_g2e"]
             exec_cmd = "".join([f"e.{attr} = {val}; " for (attr, val) in conds["e"].items()])
             if "raw_g2e" in conds:
                 exec_cmd += conds["raw_g2e"]
@@ -256,6 +278,8 @@ class TranslatorGenerator():
         cl += f"\n  void e2g_cmd(const {BleAdvEncCmd} & e, {BleAdvGenCmd} & g) const override {{"
         for conds in translators:
             if_cond = " && ".join([f"(e.{attr} == {val})" for (attr, val) in conds["e"].items()])
+            if "cond_e2g" in conds:
+                if_cond += " && " + conds["cond_e2g"]
             exec_cmd = " ".join([f"g.{attr} = {val};" for (attr, val) in conds["g"].items()])
             if "raw_e2g" in conds:
                 exec_cmd += conds["raw_e2g"]
@@ -410,6 +434,24 @@ BLE_ADV_ENCODERS = {
             },
         },
         "default_variant": "v1",
+        "default_forced_id": 0,
+    },
+    "agarce": {
+        "variants": {
+            "v3": {
+                "class": AgarceEncoder,
+                "args": [ 0x83 ],
+                "ble_param": [ 0x19, 0xFF ],
+                "header": [ 0xF9, 0x09 ],
+            },
+            "v4": {
+                "class": AgarceEncoder,
+                "args": [ 0x84 ],
+                "ble_param": [ 0x19, 0xFF ],
+                "header": [ 0xF9, 0x09 ],
+            },
+        },
+        "default_variant": "v4",
         "default_forced_id": 0,
     },
     "remote" : {

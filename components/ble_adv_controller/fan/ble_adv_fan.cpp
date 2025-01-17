@@ -23,11 +23,22 @@ void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
   if (!gen_cmd.is_fan_cmd()) return;
 
   fan::FanCall call = this->make_call();
-  if (gen_cmd.cmd == CommandType::FAN_ONOFF_SPEED) {
+  if (gen_cmd.cmd == CommandType::FAN_ON) {
+    call.set_state(true).perform();
+  } else if (gen_cmd.cmd == CommandType::FAN_ONOFF_SPEED) {
     if (gen_cmd.args[0] == 0) {
       call.set_state(false).perform();
     } else {
       call.set_speed(gen_cmd.args[0]);
+      call.set_state(true).perform();
+    }
+  } else if (gen_cmd.cmd == CommandType::FAN_FULL) {
+    if (gen_cmd.args[0] == 0) {
+      call.set_state(false).perform();
+    } else {
+      call.set_speed(gen_cmd.args[0]);
+      call.set_direction((gen_cmd.args[1] == 0) ? fan::FanDirection::FORWARD : fan::FanDirection::REVERSE);
+      call.set_oscillating(gen_cmd.args[2] != 0);
       call.set_state(true).perform();
     }
   } else if (!this->state) {
@@ -55,8 +66,10 @@ On Direction Change: only direction received
 void BleAdvFan::control(const fan::FanCall &call) {
   bool direction_refresh = false;
   bool oscillation_refresh = false;
+  uint8_t sub_cmds = 0;
   if (call.get_state().has_value()) {
     // State ON/OFF or SPEED changed
+    sub_cmds |= ble_adv_handler::FanSubCmdType::STATE;
     if (!this->state && *call.get_state()) {
       // forcing direction / oscillation refresh on 'switch on' if requested
       direction_refresh |= this->forced_refresh_on_start_;
@@ -64,6 +77,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
     }
     this->state = *call.get_state();
     if (call.get_speed().has_value()) {
+      sub_cmds |= ble_adv_handler::FanSubCmdType::SPEED;
       this->speed = *call.get_speed();
     }
     // Switch ON always setting with SPEED or OFF
@@ -74,6 +88,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
 
   if (call.get_direction().has_value()) {
     // Change of direction
+    sub_cmds |= ble_adv_handler::FanSubCmdType::DIR;
     this->direction = *call.get_direction();
     direction_refresh = true;
   }
@@ -86,6 +101,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
 
   if (call.get_oscillating().has_value()) {
     // Switch Oscillation
+    sub_cmds |= ble_adv_handler::FanSubCmdType::OSC;
     this->oscillating = *call.get_oscillating();
     oscillation_refresh = true;
   }
@@ -94,6 +110,15 @@ void BleAdvFan::control(const fan::FanCall &call) {
     ESP_LOGD(TAG, "BleAdvFan::control - Setting Oscillation %s", (this->oscillating ? "ON":"OFF"));
     this->command(CommandType::FAN_OSC, this->oscillating);
   }
+
+  // Full command including everything: what is requested and full state
+  // EXCLUSIVE with other commands
+  BleAdvGenCmd gen_cmd(CommandType::FAN_FULL);
+  gen_cmd.param = sub_cmds;
+  gen_cmd.args[0] = this->state ? this->speed : 0;
+  gen_cmd.args[1] = this->direction == fan::FanDirection::REVERSE;
+  gen_cmd.args[2] = this->oscillating;
+  this->command(gen_cmd);
 
   this->publish_state();
 }
