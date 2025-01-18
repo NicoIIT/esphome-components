@@ -26,7 +26,7 @@ from ..const import (
     CONF_BLE_ADV_SPLIT_DIM_RGB,
 )
 
-BleAdvLightBase = bleadvcontroller_ns.class_('BleAdvLightBase', light.LightOutput, BleAdvEntity)
+BleAdvLightBase = bleadvcontroller_ns.class_('BleAdvLightBase', light.LightOutput, light.LightState, BleAdvEntity)
 BleAdvLightCww = bleadvcontroller_ns.class_('BleAdvLightCww', BleAdvLightBase)
 BleAdvLightBinary = bleadvcontroller_ns.class_('BleAdvLightBinary', BleAdvLightBase)
 BleAdvLightRGB = bleadvcontroller_ns.class_('BleAdvLightRGB', BleAdvLightBase)
