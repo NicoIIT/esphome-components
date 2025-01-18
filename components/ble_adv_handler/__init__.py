@@ -39,6 +39,7 @@ FanLampEncoderV2 = bleadvhandler_ns.class_('FanLampEncoderV2')
 ZhijiaEncoderV0 = bleadvhandler_ns.class_('ZhijiaEncoderV0')
 ZhijiaEncoderV1 = bleadvhandler_ns.class_('ZhijiaEncoderV1')
 ZhijiaEncoderV2 = bleadvhandler_ns.class_('ZhijiaEncoderV2')
+ZhijiaEncoderRemote = bleadvhandler_ns.class_('ZhijiaEncoderRemote')
 RemoteEncoder = bleadvhandler_ns.class_('RemoteEncoder')
 AgarceEncoder = bleadvhandler_ns.class_('AgarceEncoder')
 ZhimeiEncoderV0 = bleadvhandler_ns.class_('ZhimeiEncoderV0')
@@ -214,6 +215,14 @@ class TranslatorGenerator():
             trans_cmd(CT.LIGHT_RGB_DIM, 0xC8) | multi_arg0(250),
             trans_cmd(CT.LIGHT_RGB_RGB, 0xCA) | multi_args(255),
         ],
+        str(ZhijiaEncoderRemote): [
+            trans_cmd(CT.PAIR, 0xA2),
+            trans_cmd(CT.UNPAIR, 0xA3),
+            trans_cmd(CT.LIGHT_ON, 0xA5),
+            trans_cmd(CT.LIGHT_OFF, 0xA6),
+            trans_cmd(CT.LIGHT_WCOLOR, 0xA8, {"param":0}) | multi_args(250),
+            #  Missing: AF / A7 / A9 / AC / AB / AA 
+        ],
         str(RemoteEncoder): [
             trans_cmd(CT.LIGHT_ON, 0x08),
             trans_cmd(CT.LIGHT_OFF, 0x06),
@@ -370,6 +379,13 @@ BLE_ADV_ENCODERS = {
                 "max_forced_id": 0xFFFFFF,
                 "ble_param": [ 0x1A, 0xFF ],
                 "header": [ 0x22, 0x9D ],
+            },
+            "vr1": {
+                "class": ZhijiaEncoderRemote,
+                "args": [ [0x20, 0x03, 0x05] ],
+                "max_forced_id": 0xFFFFFF,
+                "ble_param": [ 0x1A, 0xFF ],
+                "header": [ 0xF0, 0xFF ],
             },
         },
         "default_variant": "v2",
