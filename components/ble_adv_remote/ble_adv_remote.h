@@ -9,6 +9,7 @@
 namespace esphome {
 namespace ble_adv_remote {
 
+using EntityType = ble_adv_handler::EntityType;
 using CommandType = ble_adv_handler::CommandType;
 using BleAdvGenCmd = ble_adv_handler::BleAdvGenCmd;
 using BleAdvController = ble_adv_controller::BleAdvController;

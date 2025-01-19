@@ -28,7 +28,7 @@ void BleAdvRemote::unpair() {
 
   const auto & encoder = this->encoders_.front();
   std::vector< ble_adv_handler::BleAdvEncCmd > enc_cmds;
-  encoder->translate_g2e(enc_cmds, CommandType::UNPAIR);
+  encoder->translate_g2e(enc_cmds, BleAdvGenCmd(CommandType::UNPAIR, EntityType::CONTROLLER));
   if (enc_cmds.empty()) {
     ESP_LOGW(TAG, "Unable to send UNPAIR as feature not available for encoder.");
     return;
@@ -48,31 +48,33 @@ void BleAdvRemote::unpair() {
 
 void BleAdvRemote::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
   if (this->toggle_) {
-    if (gen_cmd.cmd == CommandType::LIGHT_ON || gen_cmd.cmd == CommandType::LIGHT_OFF) {
-      this->publish_eff(CommandType::LIGHT_TOGGLE, apply_command);
-      return;
-    } else if (gen_cmd.cmd == CommandType::LIGHT_SEC_ON || gen_cmd.cmd == CommandType::LIGHT_SEC_OFF) {
-      this->publish_eff(CommandType::LIGHT_SEC_TOGGLE, apply_command);
+    BleAdvGenCmd gen_cmd_tog = gen_cmd;
+    if (gen_cmd.cmd == CommandType::ON || gen_cmd.cmd == CommandType::OFF) {
+      gen_cmd_tog.cmd = CommandType::TOGGLE;
+      this->publish_eff(gen_cmd_tog, apply_command);
       return;
     } else if (gen_cmd.cmd == CommandType::FAN_DIR) {
-      this->publish_eff(CommandType::FAN_DIR_TOGGLE, apply_command);
+      gen_cmd_tog.cmd = CommandType::FAN_DIR_TOGGLE;
+      this->publish_eff(gen_cmd_tog, apply_command);
       return;
     } else if (gen_cmd.cmd == CommandType::FAN_OSC) {
-      this->publish_eff(CommandType::FAN_OSC_TOGGLE, apply_command);
+      gen_cmd_tog.cmd = CommandType::FAN_OSC_TOGGLE;
+      this->publish_eff(gen_cmd_tog, apply_command);
       return;
     }
   }
-  if ((gen_cmd.cmd == CommandType::LIGHT_WCOLOR) && (gen_cmd.param == 2) && !this->cycle_.empty()) {
+  if ((gen_cmd.cmd == CommandType::LIGHT_CWW_COLD_WARM) && (gen_cmd.param == 2) && !this->cycle_.empty()) {
     // Internal Cycle: change index and convert to standard Cold / Warm
     if (++this->cycle_index_ >= this->cycle_.size()) this->cycle_index_ = 0;
     auto & values =  this->cycle_[this->cycle_index_];
-    BleAdvGenCmd new_cmd(CommandType::LIGHT_WCOLOR);
+    BleAdvGenCmd new_cmd = gen_cmd;
+    new_cmd.param = 0;
     new_cmd.args[0] = values[0];
     new_cmd.args[1] = values[1];
     this->publish_eff(new_cmd, apply_command);
     return;
   }
-  if ((gen_cmd.cmd == CommandType::LIGHT_DIM || gen_cmd.cmd == CommandType::LIGHT_CCT) && (gen_cmd.param != 0)) {
+  if ((gen_cmd.cmd == CommandType::LIGHT_CWW_DIM || gen_cmd.cmd == CommandType::LIGHT_CWW_CCT) && (gen_cmd.param != 0)) {
     BleAdvGenCmd new_cmd = gen_cmd;
     new_cmd.args[0] = 1.0f / (float)this->level_count_;
     this->publish_eff(new_cmd, apply_command);

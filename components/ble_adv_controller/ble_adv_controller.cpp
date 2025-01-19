@@ -24,10 +24,8 @@ void BleAdvController::setup() {
   register_service(&BleAdvController::custom_cmd_float, "cmd_" + this->get_object_id(), {"cmd", "param", "arg0", "arg1", "arg2"});
   register_service(&BleAdvController::raw_inject, "inject_raw_" + this->get_object_id(), {"raw"});
 #endif
-  if (this->is_show_config()) {
-    this->select_encoding_.init("Encoding", this->get_name());
-    this->number_duration_.init("Duration", this->get_name());
-  }
+  this->select_encoding_.init("Encoding", this->get_name());
+  this->number_duration_.init("Duration", this->get_name());
 }
 
 void BleAdvController::dump_config() {
@@ -37,7 +35,6 @@ void BleAdvController::dump_config() {
   ESP_LOGCONFIG(TAG, "  Transmission Min Duration: %ld ms", this->get_min_tx_duration());
   ESP_LOGCONFIG(TAG, "  Transmission Max Duration: %ld ms", this->max_tx_duration_);
   ESP_LOGCONFIG(TAG, "  Transmission Sequencing Duration: %ld ms", this->seq_duration_);
-  ESP_LOGCONFIG(TAG, "  Configuration visible: %s", this->show_config_ ? "YES" : "NO");
 }
 
 void BleAdvController::controller_command(const BleAdvGenCmd & gen_cmd) {
@@ -46,37 +43,34 @@ void BleAdvController::controller_command(const BleAdvGenCmd & gen_cmd) {
 }
 
 void BleAdvController::pair() { 
-  this->controller_command(CommandType::PAIR);
+  this->controller_command(BleAdvGenCmd(CommandType::PAIR, EntityType::CONTROLLER));
 }
 
 void BleAdvController::unpair() {
-  this->controller_command(CommandType::UNPAIR);
+  this->controller_command(BleAdvGenCmd(CommandType::UNPAIR, EntityType::CONTROLLER));
 }
 
 void BleAdvController::all_off() {
-  this->publish_to_entities(CommandType::LIGHT_OFF);
-  this->publish_to_entities(CommandType::LIGHT_SEC_OFF);
-  this->publish_to_entities(CommandType::FAN_ONOFF_SPEED);
+  this->publish_to_entities(BleAdvGenCmd(CommandType::OFF, EntityType::ALL));
 }
 
 void BleAdvController::all_on() {
-  this->publish_to_entities(CommandType::LIGHT_ON);
-  this->publish_to_entities(CommandType::LIGHT_SEC_ON);
-  this->publish_to_entities(CommandType::FAN_ON);
+  this->publish_to_entities(BleAdvGenCmd(CommandType::ON, EntityType::ALL));
 }
 
 void BleAdvController::set_timer(float duration) {  // duration is the number of minutes
   this->cancel_timer();
-  BleAdvGenCmd gen_cmd(CommandType::TIMER);
+  BleAdvGenCmd gen_cmd(CommandType::TIMER, EntityType::CONTROLLER);
   gen_cmd.args[0] = duration;
   this->controller_command(gen_cmd);
-  this->set_timeout(OFF_TIMER_NAME, duration * 60000, std::bind(&BleAdvController::publish, this, CommandType::ALL_OFF, false));
+  BleAdvGenCmd off_cmd(CommandType::OFF, EntityType::ALL);
+  this->set_timeout(OFF_TIMER_NAME, duration * 60000, std::bind(&BleAdvController::publish, this, off_cmd, false));
 }
 
 void BleAdvController::custom_cmd(BleAdvEncCmd & enc_cmd) {
   // enqueue a new CUSTOM command and encode the buffer(s)
   ESP_LOGD(TAG, "Controller Custom Command.");
-  this->commands_.emplace_back(CommandType::CUSTOM);
+  this->commands_.emplace_back(CommandType::CUSTOM, EntityType::NOTYPE, 0);
   this->increase_counter();
   for (auto encoder : this->encoders_) {
     encoder->encode(this->commands_.back().params_, enc_cmd, this->params_);
@@ -94,7 +88,7 @@ void BleAdvController::custom_cmd_float(float cmd_type, float param, float arg0,
 
 void BleAdvController::raw_inject(std::string raw) {
   ESP_LOGD(TAG, "Controller Raw Injection.");
-  this->commands_.emplace_back(CommandType::CUSTOM);
+  this->commands_.emplace_back(CommandType::CUSTOM, EntityType::NOTYPE, 0);
   this->commands_.back().params_.emplace_back();
   this->commands_.back().params_.back().from_hex_string(raw);
 }
@@ -106,19 +100,15 @@ void BleAdvController::cancel_timer() {
 }
 
 void BleAdvController::enqueue(ble_adv_handler::BleAdvParams && params) {
-  this->commands_.emplace_back(CommandType::CUSTOM);
+  this->commands_.emplace_back(CommandType::CUSTOM, EntityType::NOTYPE, 0);
   std::swap(this->commands_.back().params_, params);
 }
 
 void BleAdvController::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
   this->skip_commands_ = !apply_command;
-  if (gen_cmd.cmd == CommandType::TIMER) {
+  if ((gen_cmd.cmd == CommandType::TIMER) && (gen_cmd.ent_type == EntityType::CONTROLLER)) {
     this->set_timer(gen_cmd.args[0]);
-  } else if (gen_cmd.cmd == CommandType::ALL_OFF) {
-    this->all_off();
-  } else if (gen_cmd.cmd == CommandType::ALL_ON) {
-    this->all_on();
-  } else if (!gen_cmd.is_controller_cmd()) {
+  } else if (gen_cmd.ent_type != EntityType::CONTROLLER) {
     this->publish_to_entities(gen_cmd);
   }
   this->skip_commands_ = false;
@@ -126,7 +116,9 @@ void BleAdvController::publish(const BleAdvGenCmd & gen_cmd, bool apply_command)
 
 void BleAdvController::publish_to_entities(const BleAdvGenCmd & gen_cmd) {
   for (auto & entity : this->entities_) {
-    entity->publish(gen_cmd);
+    if(entity->matches(gen_cmd)) {
+      entity->publish(gen_cmd);
+    }
   }
 }
 
@@ -144,7 +136,7 @@ void BleAdvController::increase_counter() {
 
 bool BleAdvController::enqueue(const BleAdvGenCmd &gen_cmd) {
   // Cancel Timer on any command issued if configured
-  if (this->is_cancel_timer_on_any_change() && !gen_cmd.is_controller_cmd()) {
+  if (this->is_cancel_timer_on_any_change() && (gen_cmd.ent_type != EntityType::CONTROLLER)) {
     this->cancel_timer();
   }
 
@@ -155,14 +147,14 @@ bool BleAdvController::enqueue(const BleAdvGenCmd &gen_cmd) {
   }
 
   // Remove any previous command of the same type in the queue
-  uint8_t nb_rm = std::count_if(this->commands_.begin(), this->commands_.end(), [&](QueueItem& q){ return q.cmd_type_ == gen_cmd.cmd; });
+  uint8_t nb_rm = std::count_if(this->commands_.begin(), this->commands_.end(), [&](QueueItem& q) { return q.matches_cmd(gen_cmd); });
   if (nb_rm) {
     ESP_LOGD(TAG, "Removing %d previous pending commands", nb_rm);
-    this->commands_.remove_if( [&](QueueItem& q){ return q.cmd_type_ == gen_cmd.cmd; } );
+    this->commands_.remove_if( [&](QueueItem& q){ return q.matches_cmd(gen_cmd); } );
   }
   
   // enqueue the new command and encode the buffer(s)
-  this->commands_.emplace_back(gen_cmd.cmd);
+  this->commands_.emplace_back(gen_cmd.cmd, gen_cmd.ent_type, gen_cmd.ent_index);
   this->increase_counter();
   for (auto & encoder : this->encoders_) {
     std::vector< BleAdvEncCmd > enc_cmds;
@@ -205,18 +197,26 @@ void BleAdvController::loop() {
 
 void BleAdvEntity::dump_config_base(const char * tag) {
   ESP_LOGCONFIG(tag, "  Controller '%s'", this->get_parent()->get_name().c_str());
+  ESP_LOGCONFIG(TAG, "  Index: %d", this->index_);
+}
+
+bool BleAdvEntity::matches(const BleAdvGenCmd & gen_cmd) const {
+  return (gen_cmd.ent_type == EntityType::ALL) || ((gen_cmd.ent_type == this->type_) && (gen_cmd.ent_index == this->index_));
 }
 
 void BleAdvEntity::command(BleAdvGenCmd &gen_cmd) {
+  gen_cmd.ent_type = this->type_;
+  gen_cmd.ent_index = this->index_;
   this->get_parent()->enqueue(gen_cmd);
 }
 
 void BleAdvEntity::command(CommandType cmd_type, float value1, float value2, float value3) {
-  BleAdvGenCmd gen_cmd(cmd_type);
+  BleAdvGenCmd gen_cmd(cmd_type, this->type_);
+  gen_cmd.ent_index = this->index_;
   gen_cmd.args[0] = value1;
   gen_cmd.args[1] = value2;
   gen_cmd.args[2] = value3;
-  this->command(gen_cmd);
+  this->get_parent()->enqueue(gen_cmd);
 }
 
 } // namespace ble_adv_controller

@@ -22,7 +22,8 @@ std::string RemoteEncoder::to_str(const BleAdvEncCmd & enc_cmd) const {
 
 bool RemoteEncoder::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   data_map_t * data = (data_map_t *) (buf);
-  if (data->checksum != this->checksum(buf, this->len_ - 1)) return false;
+  this->log_buffer(buf, this->len_, "Decoded");
+  if (!this->check_eq(this->checksum(buf, this->len_ - 1), data->checksum, "Checksum")) return false;
   cont.tx_count_ = data->tx_count;
   cont.id_ = data->identifier;
   enc_cmd.cmd = data->cmd & 0x3F;
@@ -38,6 +39,7 @@ void RemoteEncoder::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam
   data->cmd = enc_cmd.cmd | enc_cmd.args[1];
   data->press_count = enc_cmd.args[0];
   data->checksum = this->checksum(buf, this->len_ - 1);
+  this->log_buffer(buf, this->len_, "Before encoding");
 }
 
 } // namespace ble_adv_handler

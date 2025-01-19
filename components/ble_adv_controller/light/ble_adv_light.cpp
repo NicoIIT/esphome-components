@@ -13,23 +13,42 @@ float ensure_range(float f, float mini = 0.0f, float maxi = 1.0f) {
 void BleAdvLightBase::dump_config() {
   light::LightState::dump_config();
   BleAdvEntity::dump_config_base(TAG);
-  ESP_LOGCONFIG(TAG, "  Secondary: %s", this->secondary_ ? "YES" : "NO");
-}
-
-void BleAdvLightBase::command(CommandType cmd, float value1, float value2, float value3) {
-  BleAdvEntity::command(this->secondary_ ? (CommandType)((uint16_t)cmd + 10) : cmd, value1, value2, value3);
 }
 
 void BleAdvLightBase::publish(const BleAdvGenCmd & gen_cmd) {
-  // Do not process if the light is not the target
-  if (!gen_cmd.is_light_cmd(this->secondary_)) return;
+  light::LightCall call = this->make_call();
 
-  // Rewrite command if secondary
-  BleAdvGenCmd gen_cmd_rew = gen_cmd;
-  if (this->secondary_) {
-    gen_cmd_rew.cmd = (CommandType)((uint16_t)gen_cmd.cmd - 10);
+  if (gen_cmd.cmd == CommandType::ON) {
+    call.set_state(true).perform();
+  } else if (gen_cmd.cmd == CommandType::OFF) {
+    call.set_state(false).perform();
+  } else if (gen_cmd.cmd == CommandType::TOGGLE) {
+    call.set_state(this->is_off_).perform();
+  } else if (this->is_off_) {
+    ESP_LOGD(TAG, "Change ignored as entity is OFF.");
+    return;
   }
-  this->publish_impl(gen_cmd_rew);
+  
+  this->publish_impl(gen_cmd);
+}
+
+void BleAdvLightBase::update_state(light::LightState *state) {
+  // If target state is off, switch off
+  if (this->current_values.get_state() == 0) {
+    ESP_LOGD(TAG, "Switch OFF");
+    this->command(CommandType::OFF);
+    this->is_off_ = true;
+    return;
+  }
+
+  // If current state is off, switch on
+  if (this->is_off_) {
+    ESP_LOGD(TAG, "Switch ON");
+    this->command(CommandType::ON);
+    this->is_off_ = false;
+  }
+
+  this->control();
 }
 
 void BleAdvLightCww::set_min_brightness(int min_brightness, int min, int max, int step) { 
@@ -47,9 +66,7 @@ void BleAdvLightCww::set_traits(float cold_white_temperature, float warm_white_t
 
 void BleAdvLightCww::setup() {
   BleAdvLightBase::setup();
-  if (this->get_parent()->is_show_config()) {
-    this->number_min_brightness_.init("Min Brightness", this->get_name());
-  }
+  this->number_min_brightness_.init("Min Brightness", this->get_name());
 }
 
 void BleAdvLightCww::dump_config() {
@@ -81,39 +98,28 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
   light::LightCall call = this->make_call();
   call.set_color_mode(light::ColorMode::COLD_WARM_WHITE);
 
-  if (gen_cmd.cmd == CommandType::LIGHT_ON) {
-    call.set_state(true).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_OFF) {
-    call.set_state(false).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_TOGGLE) {
-    call.set_state(this->is_off_).perform();
-  } else if (this->is_off_) {
-    ESP_LOGD(TAG, "Change ignored as entity is OFF.");
-    return;
-  }
-  
-  if (gen_cmd.cmd == CommandType::LIGHT_CCT) {
-    if (gen_cmd.param == 0) {
+  if (gen_cmd.cmd == CommandType::LIGHT_CWW_CCT) {
+    if ((gen_cmd.param == 0) || (gen_cmd.param == 3)) {
       call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[0])).perform();
     } else if (gen_cmd.param == 1) { // Color Temp +
       call.set_color_temperature(this->get_ha_color_temperature(this->warm_color_ + gen_cmd.args[0])).perform();
     } else if (gen_cmd.param == 2) { // Color Temp -
       call.set_color_temperature(this->get_ha_color_temperature(this->warm_color_ - gen_cmd.args[0])).perform();
     }
-  } else if (gen_cmd.cmd == CommandType::LIGHT_DIM) {
-    if (gen_cmd.param == 0) {
+  } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_DIM) {
+    if ((gen_cmd.param == 0) || (gen_cmd.param == 3)) {
       call.set_brightness(this->get_ha_brightness(gen_cmd.args[0])).perform();
     } else if (gen_cmd.param == 1) { // Brightness +
       call.set_brightness(this->get_ha_brightness(this->brightness_ + gen_cmd.args[0])).perform();
     } else if (gen_cmd.param == 2) { // Brightness -
       call.set_brightness(this->get_ha_brightness(this->brightness_ - gen_cmd.args[0])).perform();
     }
-  } else if (gen_cmd.cmd == CommandType::LIGHT_WCOLOR) {
+  } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_COLD_WARM) {
     // standard cold(args[0]) / warm(args[1]) update
     call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[1] / (gen_cmd.args[0] + gen_cmd.args[1])));
     call.set_brightness(this->get_ha_brightness(std::max(gen_cmd.args[0], gen_cmd.args[1])));
     call.perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_DIM_CCT) {
+  } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_COLD_DIM) {
     call.set_color_temperature(this->get_ha_color_temperature(1.0 - gen_cmd.args[0]));
     call.set_brightness(this->get_ha_brightness(gen_cmd.args[1]));
     call.perform();
@@ -121,21 +127,6 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
 }
 
 void BleAdvLightCww::control() {
-  // If target state is off, switch off
-  if (this->current_values.get_state() == 0) {
-    ESP_LOGD(TAG, "Switch OFF");
-    this->command(CommandType::LIGHT_OFF);
-    this->is_off_ = true;
-    return;
-  }
-
-  // If current state is off, switch on
-  if (this->is_off_) {
-    ESP_LOGD(TAG, "Switch ON");
-    this->command(CommandType::LIGHT_ON);
-    this->is_off_ = false;
-  }
-
   // Compute Corrected Brigtness / Warm Color Temperature (potentially reversed) as float: 0 -> 1
   float updated_brf = this->get_device_brightness(this->current_values.get_brightness());
   float updated_ctf = this->get_device_color_temperature(this->current_values.get_color_temperature());
@@ -152,28 +143,31 @@ void BleAdvLightCww::control() {
   this->brightness_ = updated_brf;
   this->warm_color_ = updated_ctf;
 
-  if(!this->split_dim_cct_) {
-    light::LightColorValues eff_values = this->current_values;
-    eff_values.set_brightness(updated_brf);
-    float cwf, wwf;
-    if (this->get_parent()->is_reversed()) {
-      eff_values.as_cwww(&wwf, &cwf, 0, this->constant_brightness_);
-    } else {
-      eff_values.as_cwww(&cwf, &wwf, 0, this->constant_brightness_);
-    }
-    ESP_LOGD(TAG, "Updating Cold: %.0f%%, Warm: %.0f%%", cwf*100, wwf*100);
-    this->command(CommandType::LIGHT_WCOLOR, cwf, wwf);
-    this->command(CommandType::LIGHT_DIM_CCT, 1.0 - updated_ctf, updated_brf);
+  // Several Options are prepared but only one of them will be used by the translator / encoder
+  // They are mutually exclusive at translator level
+  // Option 1 and 2: both info sent in one message, either (Cold% / Warm%), or (brightness% / CT%)
+  light::LightColorValues eff_values = this->current_values;
+  eff_values.set_brightness(updated_brf);
+  float cwf, wwf;
+  if (this->get_parent()->is_reversed()) {
+    eff_values.as_cwww(&wwf, &cwf, 0, this->constant_brightness_);
   } else {
-    if (ct_diff != 0) {
-      ESP_LOGD(TAG, "Updating warm color temperature: %.0f%%", updated_ctf*100);
-      this->command(CommandType::LIGHT_CCT, updated_ctf);
-    }
-    if (br_diff != 0) {
-      ESP_LOGD(TAG, "Updating brightness: %.0f%%", updated_brf*100);
-      this->command(CommandType::LIGHT_DIM, updated_brf);
-    }
+    eff_values.as_cwww(&cwf, &wwf, 0, this->constant_brightness_);
   }
+  ESP_LOGD(TAG, "Updating Cold: %.0f%%, Warm: %.0f%%", cwf*100, wwf*100);
+  this->command(CommandType::LIGHT_CWW_COLD_WARM, cwf, wwf);
+  this->command(CommandType::LIGHT_CWW_COLD_DIM, 1.0 - updated_ctf, updated_brf);
+
+  // Option 3: 2 different messages
+  if (ct_diff != 0) {
+    ESP_LOGD(TAG, "Updating warm color temperature: %.0f%%", updated_ctf*100);
+    this->command(CommandType::LIGHT_CWW_CCT, updated_ctf);
+  }
+  if (br_diff != 0) {
+    ESP_LOGD(TAG, "Updating brightness: %.0f%%", updated_brf*100);
+    this->command(CommandType::LIGHT_CWW_DIM, updated_brf);
+  }
+
 }
 
 /*********************
@@ -183,33 +177,6 @@ Binary Light
 void BleAdvLightBinary::dump_config() {
   BleAdvLightBase::dump_config();
   ESP_LOGCONFIG(TAG, "  BleAdvLight - Binary");
-}
-
-void BleAdvLightBinary::publish_impl(const BleAdvGenCmd & gen_cmd) {
-  light::LightCall call = this->make_call();
-  call.set_color_mode(light::ColorMode::ON_OFF);
-
-  if (gen_cmd.cmd == CommandType::LIGHT_ON) {
-    call.set_state(true).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_OFF) {
-    call.set_state(false).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_TOGGLE) {
-    bool binary;
-    this->current_values_as_binary(&binary);
-    call.set_state(!binary).perform();
-  }
-}
-
-void BleAdvLightBinary::control() {
-  bool binary;
-  this->current_values_as_binary(&binary);
-  if (binary) {
-    ESP_LOGD(TAG, "Switch ON");
-    this->command(CommandType::LIGHT_ON);
-  } else {
-    ESP_LOGD(TAG, "Switch OFF");
-    this->command(CommandType::LIGHT_OFF);
-  }
 }
 
 /*********************
@@ -225,44 +192,25 @@ void BleAdvLightRGB::publish_impl(const BleAdvGenCmd & gen_cmd) {
   light::LightCall call = this->make_call();
   call.set_color_mode(light::ColorMode::RGB);
 
-  if (gen_cmd.cmd == CommandType::LIGHT_ON) {
-    call.set_state(true).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_OFF) {
-    call.set_state(false).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_TOGGLE) {
-    call.set_state(this->is_off_).perform();
-  } else if (this->is_off_) {
-    ESP_LOGD(TAG, "Change ignored as entity is OFF.");
-    return;
-  }
-
   if (gen_cmd.cmd == CommandType::LIGHT_RGB_DIM) {
     call.set_brightness(gen_cmd.args[0]).perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_RGB_RGB) {
+  } else if (gen_cmd.cmd == CommandType::LIGHT_RGB_RGB){
     call.set_red(gen_cmd.args[0]);
     call.set_green(gen_cmd.args[1]);
     call.set_blue(gen_cmd.args[2]);
+    call.perform();
+  } else if (gen_cmd.cmd == CommandType::LIGHT_RGB_FULL){
+    float br = std::max(std::max(gen_cmd.args[0], gen_cmd.args[1]), gen_cmd.args[2]);
+    call.set_brightness(br);
+    call.set_red(gen_cmd.args[0] / br);
+    call.set_green(gen_cmd.args[1] / br);
+    call.set_blue(gen_cmd.args[2] / br);
     call.perform();
   }
 
 }
 
 void BleAdvLightRGB::control() {
-  // If target state is off, switch off
-  if (this->current_values.get_state() == 0) {
-    ESP_LOGD(TAG, "Switch OFF");
-    this->command(CommandType::LIGHT_OFF);
-    this->is_off_ = true;
-    return;
-  }
-
-  // If current state is off, switch on
-  if (this->is_off_) {
-    ESP_LOGD(TAG, "Switch ON");
-    this->command(CommandType::LIGHT_ON);
-    this->is_off_ = false;
-  }
-
   // Compute Corrected Brigtness
   float upd_br = this->current_values.get_brightness();
   float upd_r = this->current_values.get_red();
@@ -286,22 +234,22 @@ void BleAdvLightRGB::control() {
   this->green_ = upd_g;
   this->blue_ = upd_b;
 
-  if (!this->split_dim_rgb_) {
-    // Only one message to be sent: use the esphome feature to compute the effective RGB, but we could do basic multi
-    float red, green, blue;
-    this->current_values.as_rgb(&red, &green, &blue, 0, false);
-    ESP_LOGD(TAG, "Updating raw r: %.0f%%, g: %.0f%%, b: %.0f%%", red*100, green*100, blue*100);
-    this->command(CommandType::LIGHT_RGB_RGB, red, green, blue);
-  } else {
-    // Send 2 different messages, each one only if needed: 1 for brightness and one for RGB
-    if (diff_br != 0) {
-      ESP_LOGD(TAG, "Updating brightness: %.0f%%", upd_br*100);
-      this->command(CommandType::LIGHT_RGB_DIM, upd_br);
-    }
-    if (diff_r != 0 || diff_g != 0 || diff_b !=0 ) {
-      ESP_LOGD(TAG, "Updating relative r: %.0f%%, g: %.0f%%, b: %.0f%%", upd_r*100, upd_g*100, upd_b*100);
-      this->command(CommandType::LIGHT_RGB_RGB, upd_r, upd_g, upd_b);
-    }
+  // Several Options are prepared but only one of them will be used by the translator / encoder
+  // They are mutually exclusive at translator level
+  // Option 1: Global RGB - use the esphome feature to compute the effective RGB, but we could do basic multiplication
+  float red, green, blue;
+  this->current_values.as_rgb(&red, &green, &blue, 0, false);
+  ESP_LOGD(TAG, "Updating raw r: %.0f%%, g: %.0f%%, b: %.0f%%", red*100, green*100, blue*100);
+  this->command(CommandType::LIGHT_RGB_FULL, red, green, blue);
+
+  // Option 2: Send 2 different messages, each one only if needed: 1 for brightness and one for RGB
+  if (diff_br != 0) {
+    ESP_LOGD(TAG, "Updating brightness: %.0f%%", upd_br*100);
+    this->command(CommandType::LIGHT_RGB_DIM, upd_br);
+  }
+  if (diff_r != 0 || diff_g != 0 || diff_b !=0 ) {
+    ESP_LOGD(TAG, "Updating relative r: %.0f%%, g: %.0f%%, b: %.0f%%", upd_r*100, upd_g*100, upd_b*100);
+    this->command(CommandType::LIGHT_RGB_RGB, upd_r, upd_g, upd_b);
   }
 }
 

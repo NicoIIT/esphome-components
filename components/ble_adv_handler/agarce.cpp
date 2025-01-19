@@ -28,13 +28,11 @@ void AgarceEncoder::crypt(uint8_t* buf, size_t len, uint16_t seed) const {
 bool AgarceEncoder::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   data_map_t * data = (data_map_t *) (buf);
 
-  if (data->checksum2 != this->checksum(buf, this->len_ - 1)) return false;
+  if (!this->check_eq(this->checksum(buf, this->len_ - 1), data->checksum2, "Checksum 2")) return false;
   this->crypt(buf + 3, this->len_ - 4, data->seed);
+  this->log_buffer(buf, this->len_, "Decoded");
 
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ESP_LOGD(this->id_.c_str(), "Decoded  - %s", decoded.c_str());
-
-  ENSURE_EQ(this->checksum(buf + 3, this->len_ - 5), data->checksum, "Decoded KO (checksum)");
+  if (!this->check_eq(this->checksum(buf + 3, this->len_ - 5), data->checksum, "Checksum")) return false;
 
   enc_cmd.cmd = data->tx0 & 0xF0;
   // Exclude Group Commands, ref https://github.com/NicoIIT/esphome-components/issues/17#issuecomment-2597871821
@@ -81,9 +79,7 @@ void AgarceEncoder::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam
   data->seed = (cont.seed_ == 0) ? (uint16_t) rand() % 0xFFFF : cont.seed_;
   data->checksum = this->checksum(buf + 3, this->len_ - 5);
 
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ESP_LOGD(this->id_.c_str(), "Encoded  - %s", decoded.c_str());
-
+  this->log_buffer(buf, this->len_, "Before encoding");
   this->crypt(buf + 3, this->len_ - 4, data->seed);
   data->checksum2 = this->checksum(buf, this->len_ - 1);
 }

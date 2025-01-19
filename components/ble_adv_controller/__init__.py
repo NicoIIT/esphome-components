@@ -1,3 +1,4 @@
+import logging
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.core import ID
@@ -5,6 +6,7 @@ from esphome.const import (
     CONF_DURATION,
     CONF_ID,
     CONF_REVERSED,
+    CONF_INDEX,
  )
 from esphome.cpp_helpers import setup_entity
 from esphome.components.ble_adv_handler import (
@@ -35,8 +37,16 @@ BleAdvEntity = bleadvcontroller_ns.class_('BleAdvEntity', cg.Component)
 ENTITY_BASE_CONFIG_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_BLE_ADV_CONTROLLER_ID): cv.use_id(BleAdvController),
+        cv.Optional(CONF_INDEX, default=0): cv.uint8_t,
     }
 )
+
+def deprecate_show_config(value):
+    if value == False:
+        logging.error(f"'{CONF_BLE_ADV_SHOW_CONFIG}' - This option is DEPRECATED. Please remove this option and deactivate the configuration entities in HA directly.")
+    else:
+        logging.warning(f"DEPRECATION: '{CONF_BLE_ADV_SHOW_CONFIG}' is DEPRECATED, you can remove it with no impact.")
+    return value
 
 CONFIG_SCHEMA = cv.All(
     DEVICE_BASE_CONFIG_SCHEMA.extend(
@@ -46,7 +56,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_BLE_ADV_MAX_DURATION, default=1000): cv.All(cv.positive_int, cv.Range(min=300, max=10000)),
         cv.Optional(CONF_BLE_ADV_SEQ_DURATION, default=100): cv.All(cv.positive_int, cv.Range(min=0, max=150)),
         cv.Optional(CONF_REVERSED, default=False): cv.boolean,
-        cv.Optional(CONF_BLE_ADV_SHOW_CONFIG, default=True): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_SHOW_CONFIG): deprecate_show_config,
         cv.Optional(CONF_BLE_ADV_CANCEL_TIMER, default=True): cv.boolean,
     }),
     validate_ble_adv_device,
@@ -57,6 +67,7 @@ async def entity_base_code_gen(var, config):
     await cg.register_component(var, config)
     await setup_entity(var, config)
     cg.add(var.init())
+    cg.add(var.set_index(config[CONF_INDEX]))
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
@@ -66,7 +77,6 @@ async def to_code(config):
     cg.add(var.set_max_tx_duration(config[CONF_BLE_ADV_MAX_DURATION]))
     cg.add(var.set_seq_duration(config[CONF_BLE_ADV_SEQ_DURATION]))
     cg.add(var.set_reversed(config[CONF_REVERSED]))
-    cg.add(var.set_show_config(config[CONF_BLE_ADV_SHOW_CONFIG]))
     cg.add(var.set_cancel_timer_on_any_change(config[CONF_BLE_ADV_CANCEL_TIMER]))
 
 ###############

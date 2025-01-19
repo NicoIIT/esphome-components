@@ -22,37 +22,34 @@ namespace esphome {
 
 namespace ble_adv_handler {
 
+enum EntityType {
+  NOTYPE = 0,
+  CONTROLLER = 1,
+  LIGHT = 2,
+  FAN = 3,
+  ALL = 10,
+};
+
 enum CommandType {
   NOCMD = 0,
-  // Controller handled commands: 1 -> 10
+  // Controller handled commands
   PAIR = 1,
   UNPAIR = 2,
   CUSTOM = 3,
-  ALL_ON = 4,
-  ALL_OFF = 5,
   TIMER = 6,
-  // Light Commands: 11 -> 20
-  LIGHT_ON = 11,
-  LIGHT_OFF = 12,
-  LIGHT_DIM = 13,
-  LIGHT_CCT = 14,
-  LIGHT_WCOLOR = 15,
-  LIGHT_TOGGLE = 16,
-  LIGHT_RGB_RGB = 17,
+  // Generic Entity commands
+  TOGGLE = 10,
+  ON = 11,
+  OFF = 12,
+  // Light Commands
+  LIGHT_CWW_DIM = 13,
+  LIGHT_CWW_CCT = 14,
+  LIGHT_CWW_COLD_WARM = 15,
+  LIGHT_CWW_COLD_DIM = 16,
+  LIGHT_RGB_FULL = 17,
   LIGHT_RGB_DIM = 18,
-  LIGHT_DIM_CCT = 19,
-  // Secondary Light Commands: 21 -> 30
-  LIGHT_SEC_ON = 21,
-  LIGHT_SEC_OFF = 22,
-  LIGHT_SEC_DIM = 23,
-  LIGHT_SEC_CCT = 24,
-  LIGHT_SEC_WCOLOR = 25,
-  LIGHT_SEC_TOGGLE = 26,
-  LIGHT_SEC_RGB_RGB = 27,
-  LIGHT_SEC_RGB_DIM = 28,
-  LIGHT_SEC_DIM_CCT = 29,
-  // Fan Commands: 31 -> 40
-  FAN_ON = 31,
+  LIGHT_RGB_RGB = 19,
+  // Fan Commands
   FAN_FULL = 32,
   FAN_ONOFF_SPEED = 33,
   FAN_DIR = 34,
@@ -138,18 +135,13 @@ public:
 class BleAdvGenCmd
 {
 public:
-  BleAdvGenCmd(CommandType cmd = CommandType::NOCMD): cmd(cmd) {}
+  BleAdvGenCmd(CommandType cmd = CommandType::NOCMD, EntityType type = EntityType::NOTYPE): cmd(cmd), ent_type(type) {}
   std::string str() const;
 
-  bool is_controller_cmd() const { return (this->cmd <= 10); }
-  bool is_light_cmd(bool secondary = false) const { 
-    if(secondary) return (this->cmd > 20) && (this->cmd <= 30);
-    return (this->cmd > 10) && (this->cmd <= 20);
-  }
-  bool is_fan_cmd() const { return (this->cmd > 30) && (this->cmd <= 40); }
-
   CommandType cmd;
-  uint8_t param = 0;
+  EntityType ent_type;
+  uint8_t ent_index{0};
+  uint8_t param{0};
   float args[3]{0};
 };
 
@@ -164,7 +156,7 @@ public:
   uint8_t args[3]{0};
 };
 
-class CommandTranslator 
+class BleAdvTranslator 
 {
 public:
   virtual void g2e_cmd(const BleAdvGenCmd & gen_cmd, BleAdvEncCmd & enc_cmd) const = 0;
@@ -190,7 +182,8 @@ public:
   void set_ble_param(uint8_t ad_flag, uint8_t adv_data_type){ this->ad_flag_ = ad_flag; this->adv_data_type_ = adv_data_type; }
   bool is_ble_param(uint8_t ad_flag, uint8_t adv_data_type) const { return this->ad_flag_ == ad_flag && this->adv_data_type_ == adv_data_type; }
   void set_header(const std::vector< uint8_t > && header) { this->header_ = header; }
-  void set_translator(CommandTranslator * trans) { this->translator_ = trans; }
+  void set_translator(BleAdvTranslator * trans) { this->translator_ = trans; }
+  void set_debug_mode(bool debug_mode) { this->debug_mode_ = debug_mode; }
 
   virtual void encode(BleAdvParams & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
   virtual bool decode(const BleAdvParam & packet, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
@@ -208,6 +201,11 @@ protected:
   void whiten(uint8_t *buf, size_t len, uint8_t seed) const;
   uint8_t checksum(uint8_t * buf, size_t len) const;
 
+  // utils for debugging
+  bool check_eq(uint32_t ref, uint32_t comp, const char * msg) const;
+  bool check_eq_buf(const uint8_t* ref_buf, const uint8_t* comp_buf, size_t len, const char * msg) const;
+  void log_buffer(const uint8_t* buf, size_t len, const char * msg) const;
+
   // encoder identifiers
   std::string id_;
   std::string encoding_;
@@ -220,12 +218,12 @@ protected:
   // Common parameters
   std::vector< uint8_t > header_;
   size_t len_{0};
+  bool debug_mode_{false};
 
   // Translator
-  CommandTranslator * translator_ = nullptr;
+  BleAdvTranslator * translator_ = nullptr;
 };
 
-#define ENSURE_EQ(param1, param2, ...) if ((param1) != (param2)) { ESP_LOGD(this->id_.c_str(), __VA_ARGS__); return false; }
 class BleAdvDevice;
 
 

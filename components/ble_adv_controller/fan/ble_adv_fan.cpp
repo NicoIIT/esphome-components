@@ -20,11 +20,13 @@ void BleAdvFan::setup() {
 }
 
 void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
-  if (!gen_cmd.is_fan_cmd()) return;
-
   fan::FanCall call = this->make_call();
-  if (gen_cmd.cmd == CommandType::FAN_ON) {
+  if (gen_cmd.cmd == CommandType::ON) {
     call.set_state(true).perform();
+  } else if (gen_cmd.cmd == CommandType::OFF) {
+    call.set_state(false).perform();
+  } else if (gen_cmd.cmd == CommandType::TOGGLE) {
+    call.set_state(!this->state).perform();
   } else if (gen_cmd.cmd == CommandType::FAN_ONOFF_SPEED) {
     if (gen_cmd.args[0] == 0) {
       call.set_state(false).perform();
@@ -113,7 +115,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
 
   // Full command including everything: what is requested and full state
   // EXCLUSIVE with other commands
-  BleAdvGenCmd gen_cmd(CommandType::FAN_FULL);
+  BleAdvGenCmd gen_cmd(CommandType::FAN_FULL, EntityType::FAN);
   gen_cmd.param = sub_cmds;
   gen_cmd.args[0] = this->state ? this->speed : 0;
   gen_cmd.args[1] = this->direction == fan::FanDirection::REVERSE;

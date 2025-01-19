@@ -38,36 +38,36 @@ std::string FanLampEncoderV1::to_str(const BleAdvEncCmd & enc_cmd) const {
 bool FanLampEncoderV1::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   this->whiten(buf, this->len_, 0x6F);
   this->reverse_all(buf, this->len_);
+  this->log_buffer(buf, this->len_, "Decoded");
 
   uint8_t data_start = this->prefix_.size();
   data_map_t * data = (data_map_t *) (buf + data_start);
 
   // distinguish in between different encoder variants
-  if(!std::equal(this->prefix_.begin(), this->prefix_.end(), buf)) return false;
-  if (data->cmd == 0x28 && this->pair_arg3_ != data->args[2]) return false;
-  if (data->cmd != 0x28 && !this->pair_arg_only_on_pair_ && data->args[2] != this->pair_arg3_) return false;
-  if (data->cmd != 0x28 && this->pair_arg_only_on_pair_ && data->args[2] != 0) return false;
+  if (!this->check_eq_buf(this->prefix_.data(), buf, this->prefix_.size(), "Prefix")) return false;
+  if (data->cmd == 0x28 && !this->check_eq(this->pair_arg3_, data->args[2], "Arg3")) return false;
+  if (data->cmd != 0x28 && !this->pair_arg_only_on_pair_ && !this->check_eq(this->pair_arg3_, data->args[2], "Arg3")) return false;
+  if (data->cmd != 0x28 && this->pair_arg_only_on_pair_ && !this->check_eq(0, data->args[2], "Arg3")) return false;
 
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
   uint16_t seed = htons(data->seed);
   uint8_t seed8 = static_cast<uint8_t>(seed & 0xFF);
-  ENSURE_EQ(data->r2, this->xor1_ ? seed8 ^ 1 : seed8, "Decoded KO (r2) - %s", decoded.c_str());
+  if (!this->check_eq(this->xor1_ ? seed8 ^ 1 : seed8, data->r2, "r2")) return false;
 
   uint16_t crc16 = htons(this->crc16((uint8_t*)(data), sizeof(data_map_t) - 2, ~seed));
-  ENSURE_EQ(crc16, data->crc16, "Decoded KO (crc16) - %s", decoded.c_str());
+  if (!this->check_eq(crc16, data->crc16, "crc16")) return false;
 
   if (data->args[2] != 0) {
-    ENSURE_EQ(data->args[2], this->pair_arg3_, "Decoded KO (arg3) - %s", decoded.c_str());
+    if (!this->check_eq(this->pair_arg3_, data->args[2], "Arg3")) return false;
   }
 
   if (this->with_crc2_) {
     uint16_t crc16_data_2 = *(uint16_t*) &buf[this->len_ - 2];
     if (this->forced_crc16_2_ != 0x00) {
-      ENSURE_EQ(crc16_data_2, this->forced_crc16_2_, "Decoded KO (forced_crc16_2) - %s", decoded.c_str());
+      if (!this->check_eq(this->forced_crc16_2_, crc16_data_2, "forced_crc16_2")) return false;
     } else {
       uint16_t crc16_mac = this->crc16(buf + 1, 5, 0xffff);
       uint16_t crc16_2 = htons(this->crc16(buf + data_start, sizeof(data_map_t), crc16_mac));
-      ENSURE_EQ(crc16_data_2, crc16_2, "Decoded KO (crc16_2) - %s", decoded.c_str());
+      if (!this->check_eq(crc16_2, crc16_data_2, "crc16_2")) return false;
     }
   }
 
@@ -122,6 +122,7 @@ void FanLampEncoderV1::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPa
     buf[this->len_ - 1] = 0xAA;
   }
 
+  this->log_buffer(buf, this->len_, "Before encoding");
   this->reverse_all(buf, this->len_);
   this->whiten(buf, this->len_, 0x6F);
 }
@@ -185,17 +186,13 @@ bool FanLampEncoderV2::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPa
   uint16_t crc16 = this->crc16(buf , this->len_ - 2, ~(data->seed));
 
   this->whiten(buf + 2, this->len_ - 6, (uint8_t)(data->seed), 0);
-  if (!std::equal(this->prefix_.begin(), this->prefix_.end(), buf)) return false;
-  if (data->type != this->device_type_) return false;
-  if (this->with_sign_ && data->sign == 0x0000) return false;
-  if (!this->with_sign_ && data->sign != 0x0000) return false;
+  this->log_buffer(buf, this->len_, "Decoded");
 
-  std::string decoded = esphome::format_hex_pretty(buf, this->len_);
-  ENSURE_EQ(crc16, data->crc16, "Decoded KO (crc16) - %s", decoded.c_str());
-
-  if (this->with_sign_) {
-    ENSURE_EQ(this->sign(buf + 1, data->tx_count, data->seed), data->sign, "Decoded KO (sign) - %s", decoded.c_str());
-  }
+  if (!this->check_eq_buf(this->prefix_.data(), buf, this->prefix_.size(), "Prefix")) return false;
+  if (!this->check_eq(this->device_type_, data->type, "Device Type")) return false;
+  if (this->with_sign_ && !this->check_eq(this->sign(buf + 1, data->tx_count, data->seed), data->sign, "Sign")) return false;
+  if (!this->with_sign_ && !this->check_eq(0, data->sign, "Sign")) return false;
+  if (!this->check_eq(crc16, data->crc16, "crc16")) return false;
 
   enc_cmd.cmd = data->cmd;
   enc_cmd.param1 = data->param1;
@@ -229,6 +226,7 @@ void FanLampEncoderV2::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPa
     data->sign = this->sign(buf + 1, data->tx_count, seed);
   }
 
+  this->log_buffer(buf, this->len_, "Before encoding");
   this->whiten(buf + 2, this->len_ - 6, (uint8_t) seed);
   data->crc16 = this->crc16(buf, this->len_ - 2, ~seed);
 }

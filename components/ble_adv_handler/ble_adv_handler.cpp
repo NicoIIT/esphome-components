@@ -85,13 +85,26 @@ std::string BleAdvGenCmd::str() const {
   char ret_full[100]{0};
   size_t ind = 0;
   char * ret = ret_full;
-  CommandType acmd = this->cmd;
-  if (this->is_light_cmd(true)) {
-    acmd = (CommandType)((uint16_t)this->cmd - 10);
-    ind = std::sprintf(ret, "Secondary - ");
-    ret = ret_full + ind;
+  switch(this->ent_type) {
+    case EntityType::NOTYPE:
+      ind = std::sprintf(ret_full, "NOTYPE - ");
+      break;
+    case EntityType::CONTROLLER:
+      ind = std::sprintf(ret_full, "CONTROLLER - ");
+      break;
+    case EntityType::LIGHT:
+      ind = std::sprintf(ret_full, "LIGHT/%d - ", this->ent_index);
+      break;
+    case EntityType::FAN:
+      ind = std::sprintf(ret_full, "FAN/%d - ", this->ent_index);
+      break;
+    case EntityType::ALL:
+      ind = std::sprintf(ret_full, "ALL - ");
+      break;
   }
-  switch(acmd) {
+  ret = ret_full + ind;
+
+  switch(this->cmd) {
     case CommandType::PAIR:
       ind = std::sprintf(ret, "PAIR");
       break;
@@ -101,53 +114,50 @@ std::string BleAdvGenCmd::str() const {
     case CommandType::CUSTOM:
       ind = std::sprintf(ret, "CUSTOM");
       break;
-    case CommandType::ALL_ON:
-      ind = std::sprintf(ret, "ALL_ON");
+    case CommandType::TOGGLE:
+      ind = std::sprintf(ret, "TOGGLE");
       break;
-    case CommandType::ALL_OFF:
-      ind = std::sprintf(ret, "ALL_OFF");
+    case CommandType::ON:
+      ind = std::sprintf(ret, "ON");
+      break;
+    case CommandType::OFF:
+      ind = std::sprintf(ret, "OFF");
       break;
     case CommandType::TIMER:
       ind = std::sprintf(ret, "TIMER - %0.f minutes", this->args[0]);
       break;
-    case CommandType::LIGHT_ON:
-      ind = std::sprintf(ret, "LIGHT_ON");
-      break;
-    case CommandType::LIGHT_OFF:
-      ind = std::sprintf(ret, "LIGHT_OFF");
-      break;
-    case CommandType::LIGHT_DIM:
+    case CommandType::LIGHT_CWW_DIM:
       if (this->param == 0) {
-        ind = std::sprintf(ret, "LIGHT_DIM - %.0f%%", this->args[0] * 100);
+        ind = std::sprintf(ret, "LIGHT_CWW_DIM - %.0f%%", this->args[0] * 100);
       } else if (this->param == 1) {
-        ind = std::sprintf(ret, "LIGHT_DIM (+)");
+        ind = std::sprintf(ret, "LIGHT_CWW_DIM (+)");
       } else if (this->param == 2) {
-        ind = std::sprintf(ret, "LIGHT_DIM (-)");
+        ind = std::sprintf(ret, "LIGHT_CWW_DIM (-)");
       } 
       break;
-    case CommandType::LIGHT_CCT:
+    case CommandType::LIGHT_CWW_CCT:
       if (this->param == 0) {
-        ind = std::sprintf(ret, "LIGHT_CCT - %.0f%%", this->args[0] * 100);
+        ind = std::sprintf(ret, "LIGHT_CWW_CCT - %.0f%%", this->args[0] * 100);
       } else if (this->param == 1) {
-        ind = std::sprintf(ret, "LIGHT_CCT (+)");
+        ind = std::sprintf(ret, "LIGHT_CWW_CCT (+)");
       } else if (this->param == 2) {
-        ind = std::sprintf(ret, "LIGHT_CCT (-)");
+        ind = std::sprintf(ret, "LIGHT_CWW_CCT (-)");
       } 
       break;
-    case CommandType::LIGHT_TOGGLE:
-      ind = std::sprintf(ret, "LIGHT_TOGGLE");
+    case CommandType::LIGHT_CWW_COLD_WARM:
+      ind = std::sprintf(ret, "LIGHT_CWW_COLD_WARM/%d - cold: %.0f%%, warm: %.0f%%", this->param, this->args[0] * 100, this->args[1] * 100);
       break;
-    case CommandType::LIGHT_WCOLOR:
-      ind = std::sprintf(ret, "LIGHT_WCOLOR/%d - cold: %.0f%%, warm: %.0f%%", this->param, this->args[0] * 100, this->args[1] * 100);
+    case CommandType::LIGHT_CWW_COLD_DIM:
+      ind = std::sprintf(ret, "LIGHT_CWW_COLD_DIM - cold: %.0f%%, brightness: %.0f%%", this->args[0] * 100, this->args[1] * 100);
       break;
-    case CommandType::LIGHT_RGB_RGB:
-      ind = std::sprintf(ret, "LIGHT_RGB_RGB - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
+    case CommandType::LIGHT_RGB_FULL:
+      ind = std::sprintf(ret, "LIGHT_RGB_FULL - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
       break;
     case CommandType::LIGHT_RGB_DIM:
       ind = std::sprintf(ret, "LIGHT_RGB_DIM - %.0f%%", this->args[0] * 100);
       break;
-    case CommandType::LIGHT_DIM_CCT:
-      ind = std::sprintf(ret, "LIGHT_DIM_CCT - cold: %.0f%%, brightness: %.0f%%", this->args[0] * 100, this->args[1] * 100);
+    case CommandType::LIGHT_RGB_RGB:
+      ind = std::sprintf(ret, "LIGHT_RGB_RGB - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
       break;
     case CommandType::FAN_FULL:
       ind = std::sprintf(ret, "FAN_FULL/0x%X - %0.f/%0.f/%0.f", this->param, this->args[0], this->args[1], this->args[2]);
@@ -197,8 +207,8 @@ bool BleAdvEncoder::decode(const BleAdvParam & param, BleAdvEncCmd & enc_cmd, Co
   // Check global len and header to discard most of encoders
   size_t len = param.get_data_len() - this->header_.size();
   const uint8_t * cbuf = param.get_const_data_buf();
-  if (len != this->len_) return false;
-  if (!std::equal(this->header_.begin(), this->header_.end(), cbuf)) return false;
+  if (!this->check_eq(this->len_, len, "Data length")) return false;
+  if (!this->check_eq_buf(this->header_.data(), cbuf, this->header_.size(), "Header")) return false;
 
   // copy the data to be decoded, not to alter it for other decoders
   uint8_t buf[MAX_PACKET_LEN]{0};
@@ -256,6 +266,34 @@ uint8_t BleAdvEncoder::checksum(uint8_t * buf, size_t len) const {
     ck += buf[i];
   }
   return ck & 0xFF;
+}
+
+bool BleAdvEncoder::check_eq(uint32_t ref, uint32_t comp, const char * msg) const {
+  if (ref != comp) {
+    if (this->debug_mode_) {
+      ESP_LOGD(this->id_.c_str(), "'%s' differs - expected: '0x%X', received: '0x%X'", msg, ref, comp);
+    }
+    return false;
+  }
+  return true;
+}
+
+bool BleAdvEncoder::check_eq_buf(const uint8_t* ref_buf, const uint8_t* comp_buf, size_t len, const char * msg) const {
+  if (!std::equal(ref_buf, ref_buf + len, comp_buf)) {
+    if (this->debug_mode_) {
+      std::string expected = esphome::format_hex_pretty(ref_buf, len);
+      std::string received = esphome::format_hex_pretty(comp_buf, len);
+      ESP_LOGD(this->id_.c_str(), "'%s' differs - expected: '%s', received: '%s'", msg, expected.c_str(), received.c_str());
+    }
+    return false;
+  }
+  return true;
+}
+
+void BleAdvEncoder::log_buffer(const uint8_t* buf, size_t len, const char * msg) const {
+  if (!this->debug_mode_) return;
+  std::string buffer = esphome::format_hex_pretty(buf, len);
+  ESP_LOGD(this->id_.c_str(), "%s - %s", msg, buffer.c_str());
 }
 
 void BleAdvHandler::setup() {

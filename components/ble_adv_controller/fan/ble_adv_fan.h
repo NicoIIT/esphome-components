@@ -9,6 +9,7 @@ namespace ble_adv_controller {
 class BleAdvFan : public Component, public fan::Fan, public BleAdvEntity
 {
  public:
+  BleAdvFan(): BleAdvEntity(EntityType::FAN) {}
   void dump_config() override;
   fan::FanTraits get_traits() override { return this->traits_; }
   void setup() override;

@@ -28,7 +28,8 @@ uint8_t ZhimeiEncoderV0::checksum(uint8_t* buf, size_t len) const {
 
 bool ZhimeiEncoderV0::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   data_map_t * data = (data_map_t *) buf;
-  ENSURE_EQ(this->checksum(buf, this->len_ - 1), data->checksum, "Decoded KO (Checksum)");
+  this->log_buffer(buf, this->len_, "Decoded");
+  if (!this->check_eq(this->checksum(buf, this->len_ - 1), data->checksum, "Checksum")) return false;
   enc_cmd.cmd = data->cmd;
   enc_cmd.args[0] = data->args[0];
   enc_cmd.args[1] = data->args[1];
@@ -52,6 +53,7 @@ void ZhimeiEncoderV0::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   data->index = cont.index_;
   data->id = cont.id_ & 0xFFFF;
   data->checksum = this->checksum(buf, this->len_ - 1);
+  this->log_buffer(buf, this->len_, "Before encoding");
 }
 
 constexpr uint8_t ZhimeiEncoderV1::MATRIX[];
@@ -89,15 +91,16 @@ bool ZhimeiEncoderV1::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   data_map_t * data = (data_map_t *) buf;
   if (data->cmd != 0xB4) {
     this->decrypt(buf + 9, 5, 10);
-    ENSURE_EQ(data->tx_count, data->tx2, "Decoded KO (Dupe 2/10)");
+    if (!this->check_eq(data->tx_count, data->tx2, "Dupe 2/10")) return false;
   }
+  this->log_buffer(buf, this->len_, "Decoded");
 
-  ENSURE_EQ(crc16, data->crc16, "Decoded KO (CRC)");
-  ENSURE_EQ(data->ff0, 0xFF, "Decoded KO (0 not FF)");
-  ENSURE_EQ(data->ff9, 0xFF, "Decoded KO (9 not FF)");
+  if (!this->check_eq(crc16, data->crc16, "crc16")) return false;
+  if (!this->check_eq(0xFF, data->ff0, "0 not FF")) return false;
+  if (!this->check_eq(0xFF, data->ff9, "9 not FF")) return false;
 
   for (size_t i = 0; i < PAD_LEN; ++i) {
-    ENSURE_EQ(data->padding[i], this->len_ - PAD_LEN + i, "Decoded KO (PADDING)");
+    if (!this->check_eq(this->len_ - PAD_LEN + i, data->padding[i], "PADDING")) return false;
   }
 
   enc_cmd.cmd = data->cmd;
@@ -133,6 +136,7 @@ void ZhimeiEncoderV1::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
     this->encrypt(buf + 9, 5, 10);
   }
   data->crc16 = this->crc16(buf, data_len - 3);
+  this->log_buffer(buf, this->len_, "Before encoding");
   this->encrypt(buf, data_len, 6);
 }
 
@@ -152,15 +156,17 @@ uint16_t ZhimeiEncoderV2::crc16(uint8_t* buf, size_t len) const {
 
 bool ZhimeiEncoderV2::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
   this->whiten(buf, this->len_ - PAD_LEN, 0x48);
-  if (!std::equal(buf, buf + PREFIX_LEN, PREFIX)) return false;
+  this->log_buffer(buf, this->len_, "Decoded");
+
+  if (!this->check_eq_buf(PREFIX, buf, PREFIX_LEN, "Prefix")) return false;
 
   data_map_t * data = (data_map_t *) buf;
 
   uint16_t crc16 = this->crc16(buf, this->len_ - PAD_LEN - 2);
-  if (crc16 != data->crc16) return false;
+  if (!this->check_eq(crc16, data->crc16, "crc16")) return false;
 
   for (size_t i = 0; i < PAD_LEN; ++i) {
-    ENSURE_EQ(data->padding[i], this->len_ - PAD_LEN + i + 3, "Decoded KO (PADDING)");
+    if (!this->check_eq(this->len_ - PAD_LEN + i + 3, data->padding[i], "PADDING")) return false;
   }
 
   uint8_t pivot = data->txdata[0] ^ data->txdata[1] ^ data->txdata[6] ^ data->txdata[7];
@@ -198,7 +204,7 @@ void ZhimeiEncoderV2::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   std::copy(PREFIX, PREFIX + PREFIX_LEN, data->prefix);
 
   data->crc16 = this->crc16(buf, this->len_ - PAD_LEN - 2);
-
+  this->log_buffer(buf, this->len_, "Before encoding");
   this->whiten(buf, this->len_ - PAD_LEN, 0x48);
 }
 
