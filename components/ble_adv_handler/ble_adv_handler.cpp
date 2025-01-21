@@ -25,6 +25,7 @@ void BleAdvParam::from_raw(const uint8_t * buf, size_t len) {
   size_t cur_len = 0;
   while (cur_len < this->len_ - 2) {
     size_t sub_len = this->buf_[cur_len];
+    if (sub_len + cur_len >= this->len_) break; // avoid trying to read outside of buffer (case of malformed messages)
     uint8_t type = this->buf_[cur_len + 1];
     if (type == ESP_BLE_AD_TYPE_FLAG) {
       this->ad_flag_index_ = cur_len;
@@ -305,6 +306,10 @@ void BleAdvHandler::remove_from_advertiser(uint16_t msg_id) {
 bool BleAdvHandler::handle_raw_param(BleAdvParam & param, bool publish) {
   if (this->log_raw_) {
     ESP_LOGD(TAG, "raw - %s", esphome::format_hex_pretty(param.get_full_buf(), param.get_full_len()).c_str());
+  }
+  if (!param.has_data()) {
+    if (this->log_raw_) ESP_LOGD(TAG, "Malformed raw message - ignored.");
+    return false;
   }
   for (auto & raw_trigger: this->raw_triggers_) {
     raw_trigger->trigger(param);
