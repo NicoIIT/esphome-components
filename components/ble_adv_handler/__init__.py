@@ -24,7 +24,6 @@ from .codec import (
 )
 from .translator import (
     BASE_TRANSLATOR_SCHEMA,
-    define_all_translators,
     load_default_translators,
     translator_to_code,
 )
@@ -161,7 +160,6 @@ CONFIG_SCHEMA = cv.All(
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(var.set_setup_priority(300)) # start after Bluetooth
-    define_all_translators(config.get(CONF_BLE_ADV_TRANSLATORS, []))
     for conf_tr in config.get(CONF_BLE_ADV_TRANSLATORS, []):
         trans = await translator_to_code(conf_tr)
     for conf_en in config.get(CONF_BLE_ADV_CODECS, []):

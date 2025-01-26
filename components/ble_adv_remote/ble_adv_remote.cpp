@@ -74,7 +74,7 @@ void BleAdvRemote::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
     this->publish_eff(new_cmd, apply_command);
     return;
   }
-  if ((gen_cmd.cmd == CommandType::LIGHT_CWW_DIM || gen_cmd.cmd == CommandType::LIGHT_CWW_CCT) && (gen_cmd.param != 0)) {
+  if ((gen_cmd.cmd == CommandType::LIGHT_CWW_DIM || gen_cmd.cmd == CommandType::LIGHT_CWW_WARM) && (gen_cmd.param != 0)) {
     BleAdvGenCmd new_cmd = gen_cmd;
     new_cmd.args[0] = 1.0f / (float)this->level_count_;
     this->publish_eff(new_cmd, apply_command);

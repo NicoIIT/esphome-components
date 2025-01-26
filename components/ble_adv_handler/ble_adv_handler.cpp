@@ -135,20 +135,20 @@ std::string BleAdvGenCmd::str() const {
         ind = std::sprintf(ret, "LIGHT_CWW_DIM (-)");
       } 
       break;
-    case CommandType::LIGHT_CWW_CCT:
+    case CommandType::LIGHT_CWW_WARM:
       if (this->param == 0) {
-        ind = std::sprintf(ret, "LIGHT_CWW_CCT - %.0f%%", this->args[0] * 100);
+        ind = std::sprintf(ret, "LIGHT_CWW_WARM - %.0f%%", this->args[0] * 100);
       } else if (this->param == 1) {
-        ind = std::sprintf(ret, "LIGHT_CWW_CCT (+)");
+        ind = std::sprintf(ret, "LIGHT_CWW_WARM (+)");
       } else if (this->param == 2) {
-        ind = std::sprintf(ret, "LIGHT_CWW_CCT (-)");
+        ind = std::sprintf(ret, "LIGHT_CWW_WARM (-)");
       } 
       break;
     case CommandType::LIGHT_CWW_COLD_WARM:
       ind = std::sprintf(ret, "LIGHT_CWW_COLD_WARM/%d - cold: %.0f%%, warm: %.0f%%", this->param, this->args[0] * 100, this->args[1] * 100);
       break;
-    case CommandType::LIGHT_CWW_COLD_DIM:
-      ind = std::sprintf(ret, "LIGHT_CWW_COLD_DIM - cold: %.0f%%, brightness: %.0f%%", this->args[0] * 100, this->args[1] * 100);
+    case CommandType::LIGHT_CWW_WARM_DIM:
+      ind = std::sprintf(ret, "LIGHT_CWW_WARM_DIM - warm: %.0f%%, brightness: %.0f%%", this->args[0] * 100, this->args[1] * 100);
       break;
     case CommandType::LIGHT_RGB_FULL:
       ind = std::sprintf(ret, "LIGHT_RGB_FULL - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
@@ -193,8 +193,7 @@ std::string BleAdvEncCmd::str() const {
 
 void BleAdvEncoder::translate_g2e(std::vector< BleAdvEncCmd > & enc_cmds, const BleAdvGenCmd & gen_cmd) const {
   BleAdvEncCmd enc_cmd;
-  this->translator_->g2e_cmd(gen_cmd, enc_cmd);
-  if (enc_cmd.cmd != BleAdvEncCmd::ENC_NO_CMD) {
+  if (this->translator_->g2e_cmd(gen_cmd, enc_cmd)) {
     enc_cmds.emplace_back(std::move(enc_cmd));
   }
 }

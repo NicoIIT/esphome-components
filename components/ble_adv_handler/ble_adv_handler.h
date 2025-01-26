@@ -43,9 +43,9 @@ enum CommandType {
   OFF = 12,
   // Light Commands
   LIGHT_CWW_DIM = 13,
-  LIGHT_CWW_CCT = 14,
+  LIGHT_CWW_WARM = 14,
   LIGHT_CWW_COLD_WARM = 15,
-  LIGHT_CWW_COLD_DIM = 16,
+  LIGHT_CWW_WARM_DIM = 16,
   LIGHT_RGB_FULL = 17,
   LIGHT_RGB_DIM = 18,
   LIGHT_RGB_RGB = 19,
@@ -156,11 +156,11 @@ public:
   uint8_t args[3]{0};
 };
 
-class BleAdvTranslator 
+class BleAdvTranslator_base
 {
 public:
-  virtual void g2e_cmd(const BleAdvGenCmd & gen_cmd, BleAdvEncCmd & enc_cmd) const = 0;
-  virtual void e2g_cmd(const BleAdvEncCmd & enc_cmd, BleAdvGenCmd & gen_cmd) const = 0;
+  virtual bool g2e_cmd(const BleAdvGenCmd & gen_cmd, BleAdvEncCmd & enc_cmd) const { return false; };
+  virtual bool e2g_cmd(const BleAdvEncCmd & enc_cmd, BleAdvGenCmd & gen_cmd) const { return false; };
 };
 
 /**
@@ -182,7 +182,7 @@ public:
   void set_ble_param(uint8_t ad_flag, uint8_t adv_data_type){ this->ad_flag_ = ad_flag; this->adv_data_type_ = adv_data_type; }
   bool is_ble_param(uint8_t ad_flag, uint8_t adv_data_type) const { return this->ad_flag_ == ad_flag && this->adv_data_type_ == adv_data_type; }
   void set_header(const std::vector< uint8_t > && header) { this->header_ = header; }
-  void set_translator(BleAdvTranslator * trans) { this->translator_ = trans; }
+  void set_translator(BleAdvTranslator_base * trans) { this->translator_ = trans; }
   void set_debug_mode(bool debug_mode) { this->debug_mode_ = debug_mode; }
 
   virtual void encode(BleAdvParams & params, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const;
@@ -221,7 +221,7 @@ protected:
   bool debug_mode_{false};
 
   // Translator
-  BleAdvTranslator * translator_ = nullptr;
+  BleAdvTranslator_base * translator_ = nullptr;
 };
 
 class BleAdvDevice;

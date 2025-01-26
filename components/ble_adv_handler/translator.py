@@ -13,68 +13,107 @@ bleadvhandler_ns = cg.esphome_ns.namespace('ble_adv_handler')
 ET = cg.esphome_ns.namespace('EntityType').enum('')
 CT = cg.esphome_ns.namespace('CommandType').enum('')
 FST = cg.esphome_ns.namespace('FanSubCmdType').enum('')
-BleAdvTranslator = bleadvhandler_ns.class_('BleAdvTranslator')
+BleAdvTranslator = bleadvhandler_ns.class_('BleAdvTranslator_base')
 
-class CmdParam:
-    def __init__(self, conf_name, cpp_name, parent):
-        self._conf_name = conf_name
-        self._cpp_name = cpp_name
-        self._eq = None
-        self._range = None
+def rewrite_float(val):
+    return f"{val}f" if isinstance(val, float) else f"{val}"
 
-    def __repr__(self):
-        pres = ""
-        if self._eq is not None:
-            pres += f", {self._conf_name}: {self._eq}"
-        elif self._range is not None:
-            pres += f", {self._conf_name} range: [{self._range[0]}, {self._range[1]}]"
-        return pres
-    
-    def validate(self):
-        if self._eq is not None and self._range is not None:
-            return f"{self._conf_name} and {self._conf_name}_range are exclusive"
-        if self._range is not None:
-            if self._range[0] is not None and self._range[1] is not None:
-                if self._range[0] > self._range[1]:
-                    return f"{self._conf_name}_range is invalid"
-        return None
+class MultiplyParamAction:
+    def __init__(self, factor):
+        self._factor = factor
 
-    def intersect_val_or_range(self, comp):
-        if ((self._eq is None) and (self._range is None)) or ((comp._eq is None) and (comp._range is None)):
-            return True
-        a,b = self._range if self._eq is None else (self._eq, self._eq)
-        c,d = comp._range if comp._eq is None else (comp._eq, comp._eq)
+    def apply(self, statement, reverse = False):
+        return f"({statement}) {'/' if reverse else '*'} {rewrite_float(self._factor)}" 
 
-        # checking if [a,b] intersects [c,d], knowing a and b are not both None, neither c and d 
-        if ((a is None) and (c is None)) or ((b is None) and (d is None)): return True
-        if (a is None): return (b >= c) # b and c cannot be None
-        if (b is None): return (a <= d) # a and d cannot be None            
-        if (c is None): return (d >= a) # d and a cannot be None            
-        if (d is None): return (c <= b) # c and b cannot be None
-        return ((a >= c) and (a <= d)) or ((b >= c) and (b <= d)) # a,b,c,d not None
+class InverseParamAction:
+    def __init__(self, max_value):
+        self._max = max_value
 
-    def rewrite_float(self, val):
-        return f"{val}f" if isinstance(val, float) else f"{val}"
+    def apply(self, statement, reverse = False):
+        return f"({rewrite_float(self._max)} - ({statement}))" 
 
-    def get_cpp_cond(self, name):
-        cond = ""
-        if self._eq is not None:
-            cond += f" && ({name}.{self._cpp_name} == {self.rewrite_float(self._eq)})"
-        elif self._range is not None:
-            if self._range[0] is not None:
-                cond += f" && ({name}.{self._cpp_name} >= {self.rewrite_float(self._range[0])})"
-            if self._range[1] is not None:
-                cond += f" && ({name}.{self._cpp_name} <= {self.rewrite_float(self._range[1])})"
-        return cond
+class ModuloParamAction:
+    def __init__(self, factor):
+        self._factor = factor
 
-    def get_cpp_exec(self, name):
-        statement = ""
-        if self._eq is not None:
-            statement += f"{name}.{self._cpp_name} = {self.rewrite_float(self._eq)}; "
+    def apply(self, statement, reverse = False):
+        if reverse:
+            return f"(uint8_t)({statement}) % {self._factor}" 
         return statement
 
+class CmdParam:
+    def __init__(self, conf_name, cpp_name, class_instance_ref):
+        self._conf_name = conf_name
+        self._cpp_name = cpp_name
+        self._class_instance_ref = class_instance_ref
+        self._min = None
+        self._max = None
+        self._copy_from = []
+        self._actions = []
+
+    def __repr__(self):
+        pres = []
+        if self.is_eq():
+            pres.append(f", {self._conf_name} equal: {self._min}")
+        if self._min is not None:
+            pres.append(f", {self._conf_name} min: {self._min}")
+        if self._max is not None:
+            pres.append(f", {self._conf_name} max: {self._max}")
+        return ", ".join(pres)
+    
+    def is_eq(self):
+        return (self._min is not None) and (self._max is not None) and (self._min == self._max)
+
+    def validate(self):
+        if not self.is_eq() and (self._min is not None) and (self._max is not None) and (self._min > self._max):
+            return f"{self._conf_name}_min / {self._conf_name}_max is invalid"
+        return None
+
+    def intersect_val_min_max(self, comp):
+        if self.is_eq() and comp.is_eq():
+            return self._min == comp._min
+
+        if ((self._min is None) and (self._max is None)): return True # no limit for self: intersects with anything
+        if ((comp._min is None) and (comp._max is None)): return True # no limit for comp: intersects with anything
+        if ((self._min is None) and (comp._min is None)): return True # no min limit for both: intersects
+        if ((self._max is None) and (comp._max is None)): return True # no max limit for both: intersects
+        if (self._min is None): return (self._max >= comp._min)
+        if (self._max is None): return (self._min <= comp._max)
+        if (comp._min is None): return (comp._max >= self._min)
+        if (comp._max is None): return (comp._min <= self._max)
+        if ((self._min >= comp._min) and (self._min <= comp._max)): return True
+        if ((self._max >= comp._min) and (self._max <= comp._max)): return True
+        return False
+
+    def get_cpp(self):
+        cpp_statement = f"{self._class_instance_ref}.{self._cpp_name}"
+        for action in self._actions:
+            cpp_statement = action.apply(cpp_statement)
+        return cpp_statement
+
+    def get_cpp_cond(self):
+        cond_list = []
+        if self.is_eq():
+            cond_list.append(f"({self._class_instance_ref}.{self._cpp_name} == {rewrite_float(self._min)})")
+        else:
+            if self._min is not None:
+                cond_list.append(f"({self._class_instance_ref}.{self._cpp_name} >= {rewrite_float(self._min)})")
+            if self._max is not None:
+                cond_list.append(f"({self._class_instance_ref}.{self._cpp_name} <= {rewrite_float(self._max)})")
+        return " && ".join(cond_list)
+
+    def get_cpp_exec(self):
+        if self.is_eq():
+            return f"{self._class_instance_ref}.{self._cpp_name} = {rewrite_float(self._min)}; "
+        elif self._copy_from:
+            cpp_statement = ' + '.join([ from_param.get_cpp() for from_param in self._copy_from ])
+            for action in self._actions[::-1]:
+                cpp_statement = action.apply(cpp_statement, True)
+            return f"{self._class_instance_ref}.{self._cpp_name} = {cpp_statement}; "
+        return ""
+
 class CmdBase:
-    ## Represents the Conditions on a BleAdvGenCmd / BleAdvEncCmd param and args
+    ## Represents the Conditions on a BleAdvGenCmd / BleAdvEncCmd
     def __init__(self, attribs):
         self._attribs = {}
         for cmd_param in attribs:
@@ -86,12 +125,24 @@ class CmdBase:
             pres += repr(cmd_param)
         return pres
 
+    def get_param(self, param_name):
+        return self._attribs[param_name]
+
     def set_eq(self, val, param):
-        self._attribs[param]._eq = val
+        self._attribs[param]._min = val
+        self._attribs[param]._max = val
         return self
 
-    def set_range(self, start, end, param):
-        self._attribs[param]._range = (start, end)
+    def set_min(self, val, param):
+        self._attribs[param]._min = val
+        return self
+
+    def set_max(self, val, param):
+        self._attribs[param]._max = val
+        return self
+
+    def add_action(self, val, action_type, param):
+        self._attribs[param]._actions.append(action_type(val))
         return self
 
     def validate(self):
@@ -102,29 +153,28 @@ class CmdBase:
     
     def intersects(self, comp) -> bool:
         for name, cmd_param in self._attribs.items():
-            if not cmd_param.intersect_val_or_range(comp._attribs[name]):
+            if not cmd_param.intersect_val_min_max(comp._attribs[name]):
                 return False
         return True
     
-    def get_cpp_cond(self, name):
-        cond = ""
-        for cmd_param in self._attribs.values():
-            cond += cmd_param.get_cpp_cond(name)
-        return cond
+    def get_cpp_cond(self):
+        return " && ".join(list(filter(len, [ cmd_param.get_cpp_cond() for cmd_param in self._attribs.values() ])))
     
-    def get_cpp_exec(self, name):
-        statement = ""
-        for cmd_param in self._attribs.values():
-            statement += cmd_param.get_cpp_exec(name)
-        return statement
+    def get_cpp_exec(self, ):
+        return "".join([ cmd_param.get_cpp_exec() for cmd_param in self._attribs.values()])
     
     def define_shortcuts(class_vars, params):
         for param in params:
             class_vars[f"{param}"] = partialmethod(CmdBase.set_eq, param=param)
-            class_vars[f"{param}_range"] = partialmethod(CmdBase.set_range, param=param)
+            class_vars[f"{param}_min"] = partialmethod(CmdBase.set_min, param=param)
+            class_vars[f"{param}_max"] = partialmethod(CmdBase.set_max, param=param)
+            class_vars[f"inv_{param}"] = partialmethod(CmdBase.add_action, action_type=InverseParamAction, param=param)
+            class_vars[f"multi_{param}"] = partialmethod(CmdBase.add_action, action_type=MultiplyParamAction, param=param)
+            class_vars[f"modulo_{param}"] = partialmethod(CmdBase.add_action, action_type=ModuloParamAction, param=param)
 
 
 ENC_CMD_ATTRIBS = [
+    ["cmd", "cmd", cv.uint8_t],
     ["param", "param1", cv.uint8_t],
     ["arg0", "args[0]", cv.uint8_t],
     ["arg1", "args[1]", cv.uint8_t],
@@ -134,27 +184,22 @@ ENC_CMD_ATTRIBS = [
 class EncCmd(CmdBase):
     ## Represents a Condition on a BleAdvEncCmd
     def __init__(self, cmd: int):
-        super().__init__([ CmdParam(x[0], x[1], self) for x in ENC_CMD_ATTRIBS ])
-        self._cmd = ("0x%02X" % cmd)
-
-    def __repr__(self):
-        return f"cmd: {self._cmd}" + super().__repr__()
-
-    def intersects(self, comp) -> bool:
-        if self._cmd != comp._cmd:
-            return False
-        return super().intersects(comp)
-
-    def get_cpp_cond(self):
-        return f"(e.cmd == {self._cmd})" + super().get_cpp_cond("e")
-
-    def get_cpp_exec(self):
-        return f"e.cmd = {self._cmd}; " + super().get_cpp_exec("e")
+        super().__init__([ CmdParam(x[0], x[1], "{ename}") for x in ENC_CMD_ATTRIBS ])
+        self.cmd("0x%02X" % cmd)
 
     # shortcut functions arg0 / param / arg1_range / ...
     CmdBase.define_shortcuts(vars(), [x[0] for x in ENC_CMD_ATTRIBS])
 
+def validate_gen_cmd(value):
+    return str(getattr(CT, value))
+
+def validate_gen_type(value):
+    return str(getattr(ET, value))
+
 GEN_CMD_ATTRIBS = [
+    ["cmd", "cmd", validate_gen_cmd],
+    ["type", "ent_type", validate_gen_type],
+    ["index", "ent_index", cv.uint8_t],
     ["param", "param", cv.uint8_t],
     ["arg0", "args[0]", cv.float_range()],
     ["arg1", "args[1]", cv.float_range()],
@@ -164,26 +209,12 @@ GEN_CMD_ATTRIBS = [
 class GenCmd(CmdBase):
     ## Represents a Condition on a BleAdvGenCmd
     def __init__(self, cmd: str, entity: str, index: int = 0):
-        super().__init__([ CmdParam(x[0], x[1], self) for x in GEN_CMD_ATTRIBS ])
-        self._cmd = str(cmd)
-        self._ent = str(entity)
-        self._ind = index
+        super().__init__([ CmdParam(x[0], x[1], "{gname}") for x in GEN_CMD_ATTRIBS ])
+        self.cmd(str(cmd))
+        self.type(str(entity))
+        self.index(index)
 
-    def __repr__(self):
-        return f"cmd: {self._cmd}, type: {self._ent}, index: {self._ind}" + super().__repr__()
-
-    def intersects(self, comp) -> bool:
-        if (self._cmd != comp._cmd) or (self._ent != comp._ent) or (self._ind != comp._ind):
-            return False
-        return super().intersects(comp)
-
-    def get_cpp_cond(self):
-        return f"(g.cmd == {self._cmd}) && (g.ent_type == {self._ent}) && (g.ent_index == {self._ind})" + super().get_cpp_cond("g")
-
-    def get_cpp_exec(self):
-        return f"g.cmd = {self._cmd}; g.ent_type = {self._ent}; g.ent_index = {self._ind}; " + super().get_cpp_exec("g")
-
-    # shortcut functions arg0 / param / arg1_range / ...
+    # shortcut functions cmd / type / index / arg0 / param / arg1_range / ...
     CmdBase.define_shortcuts(vars(), [x[0] for x in GEN_CMD_ATTRIBS])
 
 
@@ -227,40 +258,28 @@ class Trans:
         self._no_reverse = True
         return self
 
-    def field_copy(self, g_param, e_param):
-        self._raw_g2e += f"e.{e_param} = g.{g_param}; "
-        self._raw_e2g += f"g.{g_param} = e.{e_param}; "
-        return self
-
     def field_multiply(self, multi, g_param, e_param):
-        self._raw_g2e += f"e.{e_param} = (float){multi} * g.{g_param}; "
-        self._raw_e2g += f"g.{g_param} = ((float)e.{e_param}) / (float){multi}; "
+        if multi != 1:
+            self._gen.get_param(g_param)._actions.append(MultiplyParamAction(float(multi)))
+        self._gen.get_param(g_param)._copy_from.append(self._enc.get_param(e_param))
+        self._enc.get_param(e_param)._copy_from.append(self._gen.get_param(g_param))
         return self
         
-    def zhijia_v0_multi_args(self, reversed: bool = False):
-        rev_state = "1.0f - " if reversed else ""
-        self._raw_g2e += f"uint16_t arg16 = 1000*({rev_state}g.args[0]); e.args[1] = (arg16 & 0xFF00) >> 8; e.args[2] = arg16 & 0x00FF; "
-        self._raw_e2g += f"g.args[0] = {rev_state}((float)((((uint16_t)e.args[1]) << 8) | e.args[2]) / 1000.f); "
-        return self
-
-    def custom_exec(self, raw_g2e, raw_e2g):
-        self._raw_g2e += raw_g2e
-        self._raw_e2g += raw_e2g
-        return self
-
-    def get_cpp_g2e(self):
-        return f"if ({self._gen.get_cpp_cond()}) {{ {self._enc.get_cpp_exec()}{self._raw_g2e}}}"
+    def get_cpp_g2e(self, gname, ename):
+        raw_g2e = self._enc.get_cpp_exec().format(gname=gname, ename=ename) + self._raw_g2e.format(gname=gname, ename=ename)
+        return f"if ({self._gen.get_cpp_cond().format(gname=gname, ename=ename)}) {{ {raw_g2e}return true; }}"
         
-    def get_cpp_e2g(self):
-        return f"if ({self._enc.get_cpp_cond()}) {{ {self._gen.get_cpp_exec()}{self._raw_e2g}}}"
+    def get_cpp_e2g(self, gname, ename):
+        raw_e2g = self._gen.get_cpp_exec().format(gname=gname, ename=ename) + self._raw_e2g.format(gname=gname, ename=ename)
+        return f"if ({self._enc.get_cpp_cond().format(gname=gname, ename=ename)}) {{ {raw_e2g}return true; }}"
 
     # shortcut 'copy' and 'multi' functions for each combination of args and param
     # copy_arg0 / multi_arg0_to_arg2 / multi_param / copy_param_to_arg1 / ...
     for g_attr in GEN_CMD_ATTRIBS:
         for e_attr in ENC_CMD_ATTRIBS:
             sec_arg = f"_to_{e_attr[0]}" if (e_attr[0] != g_attr[0]) else ""
-            vars()[f"copy_{g_attr[0]}{sec_arg}"] = partialmethod(field_copy, g_param=g_attr[1], e_param=e_attr[1])
-            vars()[f"multi_{g_attr[0]}{sec_arg}"] = partialmethod(field_multiply, g_param=g_attr[1], e_param=e_attr[1])
+            vars()[f"copy_{g_attr[0]}{sec_arg}"] = partialmethod(field_multiply, multi=1, g_param=g_attr[0], e_param=e_attr[0])
+            vars()[f"multi_{g_attr[0]}{sec_arg}"] = partialmethod(field_multiply, g_param=g_attr[0], e_param=e_attr[0])
 
 
 class FullTranslator:
@@ -281,10 +300,10 @@ class FullTranslator:
         self._cmds = cmds
         self._extend = extend
     
-    def get_cmds(self, level = 0):
+    def get_cmds_recursive(self, level = 0):
         if level > 10:
             raise cv.Invalid("Translator extend depth > 10, please check for reference loop.")
-        return self._cmds if not self._extend else (self.Get(self._extend).get_cmds(level + 1) + self._cmds)
+        return self._cmds if not self._extend else (self.Get(self._extend).get_cmds_recursive(level + 1) + self._cmds)
 
     def check_duplicate(self, cmd_ref, cmd_cmp):
         if cmd_ref.intersects(cmd_cmp):
@@ -297,7 +316,7 @@ class FullTranslator:
         return None
 
     def check_consistency(self):
-        cmds = self.get_cmds()
+        cmds = self.get_cmds_recursive()
         checked_cmds = []
         for cmd in cmds:
             err = cmd._gen.validate()
@@ -318,40 +337,55 @@ class FullTranslator:
         return f"BleAdvTranslator_{self._id}"
 
     def get_cpp_class(self):
-        cmds = self.get_cmds()
-        cl = f"\nclass {self.get_class_name()}: public BleAdvTranslator\n{{"
+        gname = 'g'
+        ename = 'e'
+        inh_class = FullTranslator.Get(self._extend).get_class_name()
+        cl = f"\nclass {self.get_class_name()}: public {inh_class}\n{{"
         cl += f"\npublic:"
-        cl += f"\n  void g2e_cmd(const BleAdvGenCmd & g, BleAdvEncCmd & e) const override {{"
-        for conds in cmds:
+        cl += f"\n  bool g2e_cmd(const BleAdvGenCmd & {gname}, BleAdvEncCmd & {ename}) const override {{"
+        for conds in self._cmds:
             if not conds._no_direct:
-                cl += f"\n    {conds.get_cpp_g2e()}"
+                cl += f"\n    {conds.get_cpp_g2e(gname, ename)}"
+        cl += f"\n    return {inh_class}::g2e_cmd({gname}, {ename});"
         cl += f"\n  }}" # end of g2e
-        cl += f"\n  void e2g_cmd(const BleAdvEncCmd & e, BleAdvGenCmd & g) const override {{"
-        for conds in cmds:
+        cl += f"\n  bool e2g_cmd(const BleAdvEncCmd & {ename}, BleAdvGenCmd & {gname}) const override {{"
+        for conds in self._cmds:
             if not conds._no_reverse:
-                cl += f"\n    {conds.get_cpp_e2g()}"
+                cl += f"\n    {conds.get_cpp_e2g(gname, ename)}"
+        cl += f"\n    return {inh_class}::e2g_cmd({ename}, {gname});"
         cl += f"\n  }}" # end of e2g
         cl += f"\n}};\n"
         return cl
 
-def define_all_translators(translators):
-    # write the translator classes in "generated_translators.h"
-    with open(os.path.join(os.path.dirname(__file__), 'generated_translators.h'), 'w') as gen_file:
-        gen_file.write('// Generated Translators - GENERATED FILE: DO NOT EDIT NOR COMMIT')
-        gen_file.write('\n#include "ble_adv_handler.h"')
-        gen_file.write('\nnamespace esphome {')
-        gen_file.write('\nnamespace ble_adv_handler {\n')
-        for config in translators:
-            gen_file.write(FullTranslator.Get(config[CONF_ID].id).get_cpp_class())
-        gen_file.write('\n} // namespace ble_adv_handler')
-        gen_file.write('\n} // namespace esphome')
-        gen_file.write('\n')
+    @classmethod
+    def GenerateAllTranslators(cls):
+        # sort the translators in the good order to have inheritance working in cpp
+        sorted_translators = []
+        map_translators = {}
+        for trans in cls.REGISTERED_TRANSLATORS.values():
+            map_translators.setdefault(trans._extend, []).append(trans)
+        sorted_translators = map_translators.pop(None)
+        while (map_translators):
+            for trans in sorted_translators:
+                if trans._id in map_translators:
+                    sorted_translators += map_translators.pop(trans._id)
+        
+        # check consistency
+        for trans in sorted_translators:
+            trans.check_consistency()
 
-def validate_gen_cmd(value):
-    return str(getattr(CT, value))
-
-def validate_gen_type(value):
-    return str(getattr(ET, value))
+        # write the translator classes in "generated_translators.h"
+        with open(os.path.join(os.path.dirname(__file__), 'generated_translators.h'), 'w') as gen_file:
+            gen_file.write('// Generated Translators - GENERATED FILE: DO NOT EDIT NOR COMMIT')
+            gen_file.write('\n#include "ble_adv_handler.h"')
+            gen_file.write('\nnamespace esphome {')
+            gen_file.write('\nnamespace ble_adv_handler {\n')
+            for trans in sorted_translators:
+                if trans._extend is not None:
+                    gen_file.write(trans.get_cpp_class())
+            gen_file.write('\n} // namespace ble_adv_handler')
+            gen_file.write('\n} // namespace esphome')
+            gen_file.write('\n')
 
 def validate_modifier(value):
     if not hasattr(Trans, value):
@@ -363,9 +397,6 @@ BASE_TRANSLATOR_SCHEMA = cv.Schema({
     cv.Optional("extend"): cv.use_id(BleAdvTranslator),
     cv.Optional("cmds", default=[]): cv.ensure_list(cv.Schema({
         cv.Required("gen"): cv.Schema({
-            cv.Required("cmd"): validate_gen_cmd,
-            cv.Required("type"): validate_gen_type,
-            cv.Optional("index", default=0): cv.uint8_t,
             **{cv.Optional(f"{x[0]}", default=None): cv.Any(None, x[2]) for x in GEN_CMD_ATTRIBS},
             **{cv.Optional(f"{x[0]}_range", default=None): cv.Any(None, cv.Schema({
                 cv.Optional("min", default=None): cv.Any(None, x[2]),
@@ -373,7 +404,6 @@ BASE_TRANSLATOR_SCHEMA = cv.Schema({
             })) for x in GEN_CMD_ATTRIBS},
         }),
         cv.Required("enc"): cv.Schema({
-            cv.Required("cmd"): cv.uint8_t,
             **{cv.Optional(f"{x[0]}", default=None): cv.Any(None, x[2]) for x in ENC_CMD_ATTRIBS},
             **{cv.Optional(f"{x[0]}_range", default=None): cv.Any(None, cv.Schema({
                 cv.Optional("min", default=None): cv.Any(None, x[2]),
@@ -423,9 +453,8 @@ def load_default_translators(translators):
             CONF_ID: cv.declare_id(BleAdvTranslator)(translator._id),
         })
     
-    # Check consistency of commands
-    for config in translators:
-        FullTranslator.Get(config[CONF_ID].id).check_consistency()
+    # Check consistency and generate the cpp translators
+    FullTranslator.GenerateAllTranslators()
 
     return translators
 
@@ -444,10 +473,10 @@ for i in range(3):
 
     # CWW Light
     FullTranslator.Add_exclusive("Light CWW - Brightness / Cold and Warm", LightCmd(CT.LIGHT_CWW_DIM, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_WARM, i).param(0))
-    FullTranslator.Add_exclusive("Light CWW - Color Temperature / Cold and Warm", LightCmd(CT.LIGHT_CWW_CCT, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_WARM, i).param(0))
-    FullTranslator.Add_exclusive("Light CWW - Brightness / Full BR and CT", LightCmd(CT.LIGHT_CWW_DIM, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_DIM, i).param(0))
-    FullTranslator.Add_exclusive("Light CWW - Color Temperature / Full BR and CT", LightCmd(CT.LIGHT_CWW_CCT, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_DIM, i).param(0))
-    FullTranslator.Add_exclusive("Light CWW - Full BR and CT / Cold and Warm", LightCmd(CT.LIGHT_CWW_COLD_DIM, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_WARM, i).param(0))
+    FullTranslator.Add_exclusive("Light CWW - Color Temperature / Cold and Warm", LightCmd(CT.LIGHT_CWW_WARM, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_WARM, i).param(0))
+    FullTranslator.Add_exclusive("Light CWW - Brightness / Full BR and CT", LightCmd(CT.LIGHT_CWW_DIM, i).param(0), LightCmd(CT.LIGHT_CWW_WARM_DIM, i).param(0))
+    FullTranslator.Add_exclusive("Light CWW - Color Temperature / Full BR and CT", LightCmd(CT.LIGHT_CWW_WARM, i).param(0), LightCmd(CT.LIGHT_CWW_WARM_DIM, i).param(0))
+    FullTranslator.Add_exclusive("Light CWW - Full BR and CT / Cold and Warm", LightCmd(CT.LIGHT_CWW_WARM_DIM, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_WARM, i).param(0))
 
     # RGB Light
     FullTranslator.Add_exclusive("Light RGB - Brightness / Full RGB", LightCmd(CT.LIGHT_RGB_DIM, i).param(0), LightCmd(CT.LIGHT_RGB_FULL, i).param(0))
@@ -456,9 +485,11 @@ for i in range(3):
 ########################################
 ###  DEFAULT TRANSLATORS DEFINITION  ###
 ########################################
+BLE_ADV_BASE_TRANSLATORS = ['base', 'agarce_base'] # translators defined in software
 
 BLE_ADV_DEFAULT_TRANSLATORS = [
-    FullTranslator('default_translator_fanlamp_common', None, [
+    *[ FullTranslator(x, None, []) for x in BLE_ADV_BASE_TRANSLATORS ],
+    FullTranslator('default_translator_fanlamp_common', 'base', [
         Trans(ContCmd(CT.PAIR), EncCmd(0x28)),
         Trans(ContCmd(CT.UNPAIR), EncCmd(0x45)),
         Trans(AllCmd(CT.OFF), EncCmd(0x6F)),
@@ -467,19 +498,20 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.OFF), EncCmd(0x11)),
         Trans(LightCmd(CT.ON, 1), EncCmd(0x12)),
         Trans(LightCmd(CT.OFF, 1), EncCmd(0x13)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(0), EncCmd(0x21).param(0x00)).multi_arg0(255).multi_arg1(255), # standard
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(1), EncCmd(0x21).param(0x40)).multi_arg0(255).multi_arg1(255), # standard, remote
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0).arg1(0.1), EncCmd(0x23)), # night mode
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(1), EncCmd(0x21).param(0x24)), # K+
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(2), EncCmd(0x21).param(0x18)), # K-
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(1), EncCmd(0x21).param(0x14)), # B+
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(2), EncCmd(0x21).param(0x28)), # B-
-        Trans(FanCmd(CT.FAN_OSC_TOGGLE), EncCmd(0x33)),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0x21).param(0x00)).multi_arg0(255).multi_arg1(255),
+        # Physical Remote and app pone shortcut buttons, only reverse
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0x21).param(0x40)).multi_arg0(255).multi_arg1(255).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(0.1), EncCmd(0x23)).no_direct(), # night mode
+        Trans(LightCmd(CT.LIGHT_CWW_WARM).param(1), EncCmd(0x21).param(0x24)).no_direct(), # K+
+        Trans(LightCmd(CT.LIGHT_CWW_WARM).param(2), EncCmd(0x21).param(0x18)).no_direct(), # K-
+        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(1), EncCmd(0x21).param(0x14)).no_direct(), # B+
+        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(2), EncCmd(0x21).param(0x28)).no_direct(), # B-
+        Trans(FanCmd(CT.FAN_OSC_TOGGLE), EncCmd(0x33)).no_direct(),
     ]),
 
     FullTranslator('default_translator_flv1', 'default_translator_fanlamp_common', [
-        Trans(ContCmd(CT.TIMER).arg0_range(None,0xFF), EncCmd(0x51).arg0_range(None,0xFF)).copy_arg0(),
-        Trans(ContCmd(CT.TIMER).arg0_range(0x100,None), EncCmd(0x51).arg0(0xFF)).no_reverse(),
+        Trans(ContCmd(CT.TIMER).arg0_max(0xFF), EncCmd(0x51).arg0_max(0xFF)).copy_arg0(),
+        Trans(ContCmd(CT.TIMER).arg0_min(0x100), EncCmd(0x51).arg0(0xFF)).no_reverse(),
         Trans(FanCmd(CT.FAN_DIR), EncCmd(0x15)).copy_arg0(),
         Trans(FanCmd(CT.FAN_OSC), EncCmd(0x16)).copy_arg0(),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(3), EncCmd(0x31)).copy_arg0(),
@@ -487,8 +519,7 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
     ]),
 
     FullTranslator('default_translator_flv2', 'default_translator_fanlamp_common', [ 
-        Trans(ContCmd(CT.TIMER), EncCmd(0x41)).custom_exec(f"e.param1 = (int)g.args[0] & 0xFF; e.args[0] = (int)g.args[0] >> 8; ",
-                                                           f"g.args[0] = e.param1 + e.args[0] * 256; "),
+        Trans(ContCmd(CT.TIMER), EncCmd(0x41).multi_arg0(256).modulo_param(256)).copy_arg0_to_param().copy_arg0(),
         Trans(LightCmd(CT.LIGHT_RGB_FULL), EncCmd(0x22)).multi_arg0_to_param(255).multi_arg1_to_arg0(255).multi_arg2_to_arg1(255),
         Trans(FanCmd(CT.FAN_DIR).arg0(0), EncCmd(0x15).param(0x00)),
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0x15).param(0x01)),
@@ -498,7 +529,7 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(6), EncCmd(0x31).param(0x20)).copy_arg0(),
     ]),
 
-    FullTranslator('default_translator_zjv0', None, [
+    FullTranslator('default_translator_zjv0', 'base', [
         Trans(ContCmd(CT.PAIR), EncCmd(0xB4)),
         Trans(ContCmd(CT.UNPAIR), EncCmd(0xB0)),
         Trans(ContCmd(CT.TIMER).arg0(60), EncCmd(0xD4)),
@@ -507,31 +538,32 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(ContCmd(CT.TIMER).arg0(480), EncCmd(0xD7)),
         Trans(LightCmd(CT.ON), EncCmd(0xB3)),
         Trans(LightCmd(CT.OFF), EncCmd(0xB2)),
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(0), EncCmd(0xB5)).zhijia_v0_multi_args(),
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(0), EncCmd(0xB7)).zhijia_v0_multi_args(),
+        Trans(LightCmd(CT.LIGHT_CWW_DIM).multi_arg0(1000.0), EncCmd(0xB5).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM).multi_arg0(1000.0), EncCmd(0xB7).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
         Trans(LightCmd(CT.ON, 1), EncCmd(0xA6).arg0(1)),
         Trans(LightCmd(CT.OFF, 1), EncCmd(0xA6).arg0(2)),
         Trans(FanCmd(CT.FAN_DIR).arg0(0), EncCmd(0xD9)),
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0xDA)),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0), EncCmd(0xD8)),
-        # Fan speed_count 3 configured
+        # Fan speed_count 3, direct and reverse
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(1).arg1(3), EncCmd(0xD2)),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(2).arg1(3), EncCmd(0xD1)),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(3).arg1(3), EncCmd(0xD0)),
-        # Fan speed_count 6 configured, used for send only with fake param
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,2).arg1(6), EncCmd(0xD2)).no_reverse(),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(3,4).arg1(6), EncCmd(0xD1)).no_reverse(),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(5,6).arg1(6), EncCmd(0xD0)).no_reverse(),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)), # night mode
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(1).arg0(1).arg1(0), EncCmd(0xA2).arg0(255).arg1(0)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(1).arg0(0).arg1(1), EncCmd(0xA3).arg0(0).arg1(255)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(1).arg0(1).arg1(1), EncCmd(0xA4).arg0(255).arg1(255)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(1).arg1(0), EncCmd(0xA7).arg0(1)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(0).arg1(1), EncCmd(0xA7).arg0(2)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(1).arg1(1), EncCmd(0xA7).arg0(3)),
+        # Fan speed_count 6, direct only
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(1).arg0_max(2).arg1(6), EncCmd(0xD2)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(3).arg0_max(4).arg1(6), EncCmd(0xD1)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(5).arg0_max(6).arg1(6), EncCmd(0xD0)).no_reverse(),
+        # Physical remote and phone app shortcut buttons, reverse only
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)).no_direct(), # night mode
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(0), EncCmd(0xA2).arg0(255).arg1(0)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(1), EncCmd(0xA3).arg0(0).arg1(255)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(1), EncCmd(0xA4).arg0(255).arg1(255)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(0), EncCmd(0xA7).arg0(1)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(1), EncCmd(0xA7).arg0(2)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(1), EncCmd(0xA7).arg0(3)).no_direct(),
     ]),
 
-    FullTranslator('default_translator_zjv1v2_common', None, [
+    FullTranslator('default_translator_zjv1v2_common', 'base', [
         Trans(ContCmd(CT.PAIR), EncCmd(0xA2)),
         Trans(ContCmd(CT.UNPAIR), EncCmd(0xA3)),
         Trans(ContCmd(CT.TIMER), EncCmd(0xD9)).multi_arg0(1.0/60.0),
@@ -547,90 +579,85 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(2).arg1(3), EncCmd(0xD5)),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(3).arg1(3), EncCmd(0xD4)),
         # Fan speed_count 6 configured, used for send only
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,2).arg1(6), EncCmd(0xD6)).no_reverse(),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(3,4).arg1(6), EncCmd(0xD5)).no_reverse(),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(5,6).arg1(6), EncCmd(0xD4)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(1).arg0_max(2).arg1(6), EncCmd(0xD6)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(3).arg0_max(4).arg1(6), EncCmd(0xD5)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(5).arg0_max(6).arg1(6), EncCmd(0xD4)).no_reverse(),
     ]),
 
     FullTranslator('default_translator_zjv1', 'default_translator_zjv1v2_common', [
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(0), EncCmd(0xAD)).multi_arg0(250),
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(0), EncCmd(0xAE)).multi_arg0(250),
+        Trans(LightCmd(CT.LIGHT_CWW_DIM), EncCmd(0xAD)).multi_arg0(250),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM), EncCmd(0xAE)).multi_arg0(250),
     ]),
 
     FullTranslator('default_translator_zjv2fl', 'default_translator_zjv1v2_common', [
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(3), EncCmd(0xAD)).multi_arg0(250),
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(3), EncCmd(0xAE)).multi_arg0(250),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(0), EncCmd(0xA8)).multi_arg0(250).multi_arg1(250),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0xA8)).multi_arg0(250).multi_arg1(250),
         Trans(LightCmd(CT.LIGHT_RGB_DIM), EncCmd(0xC8)).multi_arg0(250),
         Trans(LightCmd(CT.LIGHT_RGB_RGB), EncCmd(0xCA)).multi_arg0(255).multi_arg1(255).multi_arg2(255),
+        # req from app, only reverse, replaced by CT.LIGHT_CWW_COLD_WARM on direct to get ride of flickering
+        Trans(LightCmd(CT.LIGHT_CWW_DIM), EncCmd(0xAD)).multi_arg0(250).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM), EncCmd(0xAE)).multi_arg0(250).no_direct(),
     ]),
 
     FullTranslator('default_translator_zjv2', 'default_translator_zjv1v2_common', [
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(0), EncCmd(0xAD)).multi_arg0(250),
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(0), EncCmd(0xAE)).multi_arg0(250),
+        Trans(LightCmd(CT.LIGHT_CWW_DIM), EncCmd(0xAD)).multi_arg0(250),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM), EncCmd(0xAE)).multi_arg0(250),
         Trans(LightCmd(CT.LIGHT_RGB_DIM), EncCmd(0xC8)).multi_arg0(250),
         Trans(LightCmd(CT.LIGHT_RGB_RGB), EncCmd(0xCA)).multi_arg0(255).multi_arg1(255).multi_arg2(255),
     ]),
 
-    FullTranslator('default_translator_zjvr1', None, [
+    FullTranslator('default_translator_zjvr1', 'base', [
         Trans(ContCmd(CT.PAIR), EncCmd(0xA2)),
         Trans(ContCmd(CT.UNPAIR), EncCmd(0xA3)),
         Trans(LightCmd(CT.ON), EncCmd(0xA5)),
         Trans(LightCmd(CT.OFF), EncCmd(0xA6)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(0), EncCmd(0xA8)).multi_arg0(250).multi_arg1(250),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0xA8)).multi_arg0(250).multi_arg1(250),
         #  Missing: AF / A7 / A9 / AC / AB / AA 
     ]),
 
-    FullTranslator('default_translator_remote', None, [
+    FullTranslator('default_translator_remote', 'base', [
         Trans(LightCmd(CT.ON), EncCmd(0x08)),
         Trans(LightCmd(CT.OFF), EncCmd(0x06)),
         Trans(LightCmd(CT.TOGGLE, 1), EncCmd(0x13)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0).arg1(0.1), EncCmd(0x10)), # night mode
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(1), EncCmd(0x0A)).copy_arg0(), # K+ 
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(2), EncCmd(0x0B)).copy_arg0(), # K-
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(1), EncCmd(0x02)).copy_arg0(), # B+
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(2), EncCmd(0x03)).copy_arg0(), # B-
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2), EncCmd(0x07)), # CCT / brightness Cycle
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(0.1), EncCmd(0x10)).no_direct(), # night mode
+        Trans(LightCmd(CT.LIGHT_CWW_WARM), EncCmd(0x0A)).copy_arg0().no_direct(), # K+ 
+        Trans(LightCmd(CT.LIGHT_CWW_WARM), EncCmd(0x0B)).copy_arg0().no_direct(), # K-
+        Trans(LightCmd(CT.LIGHT_CWW_DIM), EncCmd(0x02)).copy_arg0().no_direct(), # B+
+        Trans(LightCmd(CT.LIGHT_CWW_DIM), EncCmd(0x03)).copy_arg0().no_direct(), # B-
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0x07)).no_direct(), # CCT / brightness Cycle
     ]),
 
-    FullTranslator('default_translator_agv3', None, [
+    FullTranslator('default_translator_agv3', 'agarce_base', [
         Trans(ContCmd(CT.PAIR), EncCmd(0x00).arg0(1)),
         Trans(ContCmd(CT.UNPAIR), EncCmd(0x00).arg0(0)),
-        Trans(AllCmd(CT.OFF), EncCmd(0x70).arg0_range(None,1)),
-        Trans(AllCmd(CT.ON), EncCmd(0x70).arg0_range(2,None)),
+        Trans(AllCmd(CT.OFF), EncCmd(0x70).arg0_max(1)),
+        Trans(AllCmd(CT.ON), EncCmd(0x70).arg0_min(2)),
         Trans(LightCmd(CT.ON), EncCmd(0x10).arg0(1)),
         Trans(LightCmd(CT.OFF), EncCmd(0x10).arg0(0)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_DIM), EncCmd(0x20)).multi_arg0(100).multi_arg1(100),
-        # Holy CRAP !!!!
-        Trans(FanCmd(CT.FAN_FULL), EncCmd(0x80))
-            .custom_exec(f"e.args[0] = ((g.args[0] > 0) ? 0x80 : 0x00) | ((int) g.args[0]) | (g.args[1] ? 0x10 : 0x00); e.args[1] = g.args[2]; ",
-                         f"g.args[0] = (e.args[0] & 0x80) ? e.args[0] & 0x0F : 0; g.args[1] = (e.args[0] & 0x10) > 0; g.args[2] = e.args[1]; ")
-            .custom_exec(f"e.args[2] = ((g.param & {FST.SPEED} || (g.args[0] > 0)) ? 0x01:0 ) | (g.param & {FST.DIR} ? 0x02:0 | (g.param & {FST.STATE} ? 0x08:0) | (g.param & {FST.OSC} ? 0x10:0)); ",
-                         f"g.param = ((e.args[2] & 0x01) ? {FST.SPEED}:0) | (e.args[2] & 0x02 ? {FST.DIR}:0) | (e.args[2] & 0x08 ? {FST.STATE}:0) | (e.args[2] & 0x10 ? {FST.OSC}:0); "),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM_DIM).inv_arg0(1.0), EncCmd(0x20)).multi_arg0(100).multi_arg1(100),
     ]),
 
-    FullTranslator('default_translator_zhimei_common', None, [
+    FullTranslator('default_translator_zhimei_common', 'base', [
         Trans(ContCmd(CT.UNPAIR), EncCmd(0xB0)),
-        Trans(ContCmd(CT.TIMER), EncCmd(0xA5)).custom_exec(f"e.args[0] = (uint8_t)((int) g.args[0] / 60); e.args[1] = (int)g.args[0] % 60; ",
-                                                           f"g.args[0] = e.args[0] * 60 + e.args[1]; "),
+        Trans(ContCmd(CT.TIMER), EncCmd(0xA5).multi_arg0(60.0).modulo_arg1(60)).copy_arg0().copy_arg0_to_arg1(),
         Trans(LightCmd(CT.ON), EncCmd(0xB3)),
         Trans(LightCmd(CT.OFF), EncCmd(0xB2)),
         Trans(LightCmd(CT.ON, 1), EncCmd(0xA6).arg0(2)),
         Trans(LightCmd(CT.OFF, 1), EncCmd(0xA6).arg0(1)),
         Trans(LightCmd(CT.LIGHT_RGB_FULL, 1), EncCmd(0xCA)).multi_arg0(255).multi_arg1(255).multi_arg2(255),
-        Trans(LightCmd(CT.LIGHT_CWW_DIM).param(0), EncCmd(0xB5)).zhijia_v0_multi_args(),
-        Trans(LightCmd(CT.LIGHT_CWW_CCT).param(0), EncCmd(0xB7)).zhijia_v0_multi_args(True),
+        Trans(LightCmd(CT.LIGHT_CWW_DIM).multi_arg0(1000.0), EncCmd(0xB5).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM).inv_arg0(1.0).multi_arg0(1000.0), EncCmd(0xB7).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
         Trans(FanCmd(CT.FAN_DIR).arg0(0), EncCmd(0xD9)),
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0xDA)),
         Trans(FanCmd(CT.FAN_OSC).arg0(0), EncCmd(0xDE).arg0(1)),
         Trans(FanCmd(CT.FAN_OSC).arg0(1), EncCmd(0xDE).arg0(2)),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0), EncCmd(0xD1)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,None).arg1(3), EncCmd(0xD3)).multi_arg0(2).no_reverse(),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,None).arg1(6), EncCmd(0xD3)).copy_arg0(),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)), # night mode
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(0).arg1(1), EncCmd(0xA7).arg0(1)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(1).arg1(0), EncCmd(0xA7).arg0(2)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(1).arg1(1), EncCmd(0xA7).arg0(3)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(1).arg1(3), EncCmd(0xD3)).multi_arg0(2).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_min(1).arg1(6), EncCmd(0xD3)).copy_arg0(),
+        # Shortcut phone app buttons, only reverse
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)).no_direct(), # night mode
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(1), EncCmd(0xA7).arg0(1)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(0), EncCmd(0xA7).arg0(2)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(1), EncCmd(0xA7).arg0(3)).no_direct(),
     ]),
 
     FullTranslator('default_translator_zmv0', 'default_translator_zhimei_common', [

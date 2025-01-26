@@ -5,6 +5,42 @@
 namespace esphome {
 namespace ble_adv_handler {
 
+// Exception as this translator is really complex: hard code it
+class BleAdvTranslator_agarce_base: public BleAdvTranslator_base
+{
+public:
+  bool g2e_cmd(const BleAdvGenCmd & g, BleAdvEncCmd & e) const override {
+    if ((g.cmd == CommandType::FAN_FULL) && (g.ent_type == EntityType::FAN) && (g.ent_index == 0)) { 
+      e.cmd = 0x80;
+      e.args[0] = ((g.args[0] > 0) ? 0x80 : 0x00) | ((int) g.args[0]) | (g.args[1] ? 0x10 : 0x00);
+      e.args[1] = g.args[2];
+      e.args[2]  = (g.param & FanSubCmdType::SPEED ? 0x01:0x00);
+      e.args[2] |= (g.param & FanSubCmdType::DIR ? 0x02:0);
+      e.args[2] |= (g.param & FanSubCmdType::STATE ? 0x08:0);
+      e.args[2] |= (g.param & FanSubCmdType::OSC ? 0x10:0);
+      return true;
+    }
+    return BleAdvTranslator_base::g2e_cmd(g, e);
+  }
+  bool e2g_cmd(const BleAdvEncCmd & e, BleAdvGenCmd & g) const override {
+    if ((e.cmd == 0x80)) {
+      g.cmd = CommandType::FAN_FULL;
+      g.ent_type = EntityType::FAN;
+      g.ent_index = 0;
+      g.args[0] = (e.args[0] & 0x80) ? e.args[0] & 0x0F : 0;
+      g.args[1] = (e.args[0] & 0x10) > 0;
+      g.args[2] = e.args[1];
+      g.param  = (e.args[2] & 0x01 ? FanSubCmdType::SPEED:0); 
+      g.param |= (e.args[2] & 0x02 ? FanSubCmdType::DIR:0);
+      g.param |= (e.args[2] & 0x08 ? FanSubCmdType::STATE:0);
+      g.param |= (e.args[2] & 0x10 ? FanSubCmdType::OSC:0);
+      return true;
+    }
+    return BleAdvTranslator_base::e2g_cmd(e, g);
+  }
+};
+
+
 class AgarceEncoder: public BleAdvEncoder
 {
 public:

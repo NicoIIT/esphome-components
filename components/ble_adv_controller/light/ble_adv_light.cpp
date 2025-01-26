@@ -98,7 +98,7 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
   light::LightCall call = this->make_call();
   call.set_color_mode(light::ColorMode::COLD_WARM_WHITE);
 
-  if (gen_cmd.cmd == CommandType::LIGHT_CWW_CCT) {
+  if (gen_cmd.cmd == CommandType::LIGHT_CWW_WARM) {
     if ((gen_cmd.param == 0) || (gen_cmd.param == 3)) {
       call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[0])).perform();
     } else if (gen_cmd.param == 1) { // Color Temp +
@@ -119,8 +119,8 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd & gen_cmd) {
     call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[1] / (gen_cmd.args[0] + gen_cmd.args[1])));
     call.set_brightness(this->get_ha_brightness(std::max(gen_cmd.args[0], gen_cmd.args[1])));
     call.perform();
-  } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_COLD_DIM) {
-    call.set_color_temperature(this->get_ha_color_temperature(1.0 - gen_cmd.args[0]));
+  } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_WARM_DIM) {
+    call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[0]));
     call.set_brightness(this->get_ha_brightness(gen_cmd.args[1]));
     call.perform();
   }
@@ -156,12 +156,12 @@ void BleAdvLightCww::control() {
   }
   ESP_LOGD(TAG, "Updating Cold: %.0f%%, Warm: %.0f%%", cwf*100, wwf*100);
   this->command(CommandType::LIGHT_CWW_COLD_WARM, cwf, wwf);
-  this->command(CommandType::LIGHT_CWW_COLD_DIM, 1.0 - updated_ctf, updated_brf);
+  this->command(CommandType::LIGHT_CWW_WARM_DIM, updated_ctf, updated_brf);
 
   // Option 3: 2 different messages
   if (ct_diff != 0) {
     ESP_LOGD(TAG, "Updating warm color temperature: %.0f%%", updated_ctf*100);
-    this->command(CommandType::LIGHT_CWW_CCT, updated_ctf);
+    this->command(CommandType::LIGHT_CWW_WARM, updated_ctf);
   }
   if (br_diff != 0) {
     ESP_LOGD(TAG, "Updating brightness: %.0f%%", updated_brf*100);
