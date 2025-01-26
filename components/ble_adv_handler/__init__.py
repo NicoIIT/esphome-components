@@ -95,7 +95,7 @@ DEVICE_BASE_CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
         cv.GenerateID(CONF_BLE_ADV_HANDLER_ID): cv.use_id(BleAdvHandler),
         cv.Optional(CONF_BLE_ADV_CODEC_ID): cv.use_id(BleAdvEncoder),
         cv.Optional(CONF_BLE_ADV_ENCODING): cv.string,
-        cv.Optional(CONF_VARIANT): cv.alphanumeric,
+        cv.Optional(CONF_VARIANT): cv.string,
         cv.Optional(CONF_BLE_ADV_FORCED_ID): cv.hex_uint32_t,
         cv.Optional(CONF_INDEX, default=0): cv.All(cv.positive_int, cv.Range(min=0, max=255)),
     }

@@ -46,7 +46,7 @@ Supported apps:
 More details are available in the documentation of each component.
 
 ## For the Developers
-The [wiki](wiki/Developer-Guide) is avialable for info on Architecture, Helpers to contribute more easily, ...
+The [wiki](../../wiki/Developer-Guide) is avialable for info on Architecture, Helpers to contribute more easily, ...
 
 ## Credits
 Based on the initial work from:
