@@ -8,6 +8,7 @@
 * Creation of the Change Log (this page)
 * Possibility to define codecs and translators in configuration directly, and more easilly debug them, details in [wiki](../../wiki/Supporting-a-new-Physical-Remote-or-application#user-defined-codecs-and-translators). Mainly for Developers (Python and C++ minimum skills required)
 * Various fixes for RGB Lights
+* Bug fix on Fan Speed control, in particular you should now be able to choose the speed_count 3 or 6 independently of your device. Still it will work better if properly aligned with your device features.
 * Refactoring of Zhi Jia encoders (TECH)
 * Refactoring translators C++ generation (TECH)
 

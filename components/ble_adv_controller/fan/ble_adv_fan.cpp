@@ -31,7 +31,9 @@ void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
     if (gen_cmd.args[0] == 0) {
       call.set_state(false).perform();
     } else {
-      call.set_speed(gen_cmd.args[0]);
+      float max_speed = (gen_cmd.args[1] == 0) ? REF_SPEED : gen_cmd.args[1];
+      uint8_t rounded_speed = (uint8_t) (((float)(gen_cmd.args[0] * this->traits_.supported_speed_count()) / max_speed) + 0.5f);
+      call.set_speed(rounded_speed);
       call.set_state(true).perform();
     }
   } else if (gen_cmd.cmd == CommandType::FAN_FULL) {
@@ -84,8 +86,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
     }
     // Switch ON always setting with SPEED or OFF
     ESP_LOGD(TAG, "BleAdvFan::control - Setting %s with speed %d", this->state ? "ON":"OFF", this->speed);
-    this->command(CommandType::FAN_ONOFF_SPEED, this->state ? this->speed : 0, 
-                  (this->traits_.supported_speed_count() == REF_SPEED) ? REF_SPEED : 0);
+    this->command(CommandType::FAN_ONOFF_SPEED, this->state ? this->speed : 0, this->traits_.supported_speed_count());
   }
 
   if (call.get_direction().has_value()) {

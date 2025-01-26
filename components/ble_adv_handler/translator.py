@@ -211,9 +211,21 @@ class Trans:
         self._enc: EncCmd = enc
         self._raw_e2g = ""
         self._raw_g2e = ""
+        self._no_reverse = False
+        self._no_direct = False
 
     def __repr__(self):
         return f"Gen: {self._gen} <=> Enc: {self._enc}"
+
+    def no_direct(self):
+        # Flags the translator as not used in direct g2e
+        self._no_direct = True
+        return self
+
+    def no_reverse(self):
+        # Flags the translator as not used in reverse e2g 
+        self._no_reverse = True
+        return self
 
     def field_copy(self, g_param, e_param):
         self._raw_g2e += f"e.{e_param} = g.{g_param}; "
@@ -295,9 +307,11 @@ class FullTranslator:
             if err is not None:
                 raise cv.Invalid(f"Translator ID '{self._id}': Invalid enc Command({err}) \n {cmd._enc}\n")
             for prev_cmd in checked_cmds:
-                self.check_duplicate(cmd._enc, prev_cmd._enc)
-                self.check_duplicate(cmd._gen, prev_cmd._gen)
-                self.check_exclusive(cmd._gen, prev_cmd._gen)
+                if not cmd._no_reverse and not prev_cmd._no_reverse:
+                    self.check_duplicate(cmd._enc, prev_cmd._enc)
+                if not cmd._no_direct and not prev_cmd._no_direct:
+                    self.check_duplicate(cmd._gen, prev_cmd._gen)
+                    self.check_exclusive(cmd._gen, prev_cmd._gen)
             checked_cmds.append(cmd)
             
     def get_class_name(self):
@@ -309,11 +323,13 @@ class FullTranslator:
         cl += f"\npublic:"
         cl += f"\n  void g2e_cmd(const BleAdvGenCmd & g, BleAdvEncCmd & e) const override {{"
         for conds in cmds:
-            cl += f"\n    {conds.get_cpp_g2e()}"
+            if not conds._no_direct:
+                cl += f"\n    {conds.get_cpp_g2e()}"
         cl += f"\n  }}" # end of g2e
         cl += f"\n  void e2g_cmd(const BleAdvEncCmd & e, BleAdvGenCmd & g) const override {{"
         for conds in cmds:
-            cl += f"\n    {conds.get_cpp_e2g()}"
+            if not conds._no_reverse:
+                cl += f"\n    {conds.get_cpp_e2g()}"
         cl += f"\n  }}" # end of e2g
         cl += f"\n}};\n"
         return cl
@@ -422,9 +438,9 @@ async def translator_to_code(config):
 # Consider entity index can go up to 3, even if only 0 and 1 are effectivelly used for Light, and only 0 for Fan
 for i in range(3):
     # Fan
-    FullTranslator.Add_exclusive("Fan - Full / Speed", FanCmd(CT.FAN_ONOFF_SPEED, i).param(0), FanCmd(CT.FAN_FULL, i))
-    FullTranslator.Add_exclusive("Fan - Full / Direction", FanCmd(CT.FAN_DIR, i).param(0), FanCmd(CT.FAN_FULL, i))
-    FullTranslator.Add_exclusive("Fan - Full / Oscillation", FanCmd(CT.FAN_OSC, i).param(0), FanCmd(CT.FAN_FULL, i))
+    FullTranslator.Add_exclusive("Fan - Full / On Off Speed", FanCmd(CT.FAN_FULL, i).param(0), FanCmd(CT.FAN_ONOFF_SPEED, i))
+    FullTranslator.Add_exclusive("Fan - Full / Direction", FanCmd(CT.FAN_FULL, i).param(0), FanCmd(CT.FAN_DIR, i))
+    FullTranslator.Add_exclusive("Fan - Full / Oscillation", FanCmd(CT.FAN_FULL, i).param(0), FanCmd(CT.FAN_OSC, i))
 
     # CWW Light
     FullTranslator.Add_exclusive("Light CWW - Brightness / Cold and Warm", LightCmd(CT.LIGHT_CWW_DIM, i).param(0), LightCmd(CT.LIGHT_CWW_COLD_WARM, i).param(0))
@@ -462,11 +478,11 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
     ]),
 
     FullTranslator('default_translator_flv1', 'default_translator_fanlamp_common', [
-        Trans(ContCmd(CT.TIMER).arg0_range(None,0xFE), EncCmd(0x51).arg0_range(None,0xFE)).copy_arg0(),
-        Trans(ContCmd(CT.TIMER).arg0_range(0xFF,None), EncCmd(0x51).arg0(0xFF)), # No'reverse' way possible...
+        Trans(ContCmd(CT.TIMER).arg0_range(None,0xFF), EncCmd(0x51).arg0_range(None,0xFF)).copy_arg0(),
+        Trans(ContCmd(CT.TIMER).arg0_range(0x100,None), EncCmd(0x51).arg0(0xFF)).no_reverse(),
         Trans(FanCmd(CT.FAN_DIR), EncCmd(0x15)).copy_arg0(),
         Trans(FanCmd(CT.FAN_OSC), EncCmd(0x16)).copy_arg0(),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(0), EncCmd(0x31)).copy_arg0(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(3), EncCmd(0x31)).copy_arg0(),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(6), EncCmd(0x32).arg1(6)).copy_arg0(),
     ]),
 
@@ -478,7 +494,7 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0x15).param(0x01)),
         Trans(FanCmd(CT.FAN_OSC).arg0(0), EncCmd(0x16).param(0x00)),
         Trans(FanCmd(CT.FAN_OSC).arg0(1), EncCmd(0x16).param(0x01)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(0), EncCmd(0x31).param(0x00)).copy_arg0(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(3), EncCmd(0x31).param(0x00)).copy_arg0(),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg1(6), EncCmd(0x31).param(0x20)).copy_arg0(),
     ]),
 
@@ -497,10 +513,15 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.OFF, 1), EncCmd(0xA6).arg0(2)),
         Trans(FanCmd(CT.FAN_DIR).arg0(0), EncCmd(0xD9)),
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0xDA)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0).arg1(6), EncCmd(0xD8)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(2).arg1(6), EncCmd(0xD2)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(4).arg1(6), EncCmd(0xD1)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(6).arg1(6), EncCmd(0xD0)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0), EncCmd(0xD8)),
+        # Fan speed_count 3 configured
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(1).arg1(3), EncCmd(0xD2)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(2).arg1(3), EncCmd(0xD1)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(3).arg1(3), EncCmd(0xD0)),
+        # Fan speed_count 6 configured, used for send only with fake param
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,2).arg1(6), EncCmd(0xD2)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(3,4).arg1(6), EncCmd(0xD1)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(5,6).arg1(6), EncCmd(0xD0)).no_reverse(),
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)), # night mode
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(1).arg0(1).arg1(0), EncCmd(0xA2).arg0(255).arg1(0)),
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(1).arg0(0).arg1(1), EncCmd(0xA3).arg0(0).arg1(255)),
@@ -520,11 +541,15 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.OFF, 1), EncCmd(0xB0)),
         Trans(FanCmd(CT.FAN_DIR).arg0(0), EncCmd(0xDB)),
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0xDA)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0).arg1(6), EncCmd(0xD7)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(2).arg1(6), EncCmd(0xD6)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(4).arg1(6), EncCmd(0xD5)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(6).arg1(6), EncCmd(0xD4)),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0.1).arg1(0.1), EncCmd(0xA7).arg0(25).arg1(25)), # night mode
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0), EncCmd(0xD7)),
+        # Fan speed_count 3 configured
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(1).arg1(3), EncCmd(0xD6)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(2).arg1(3), EncCmd(0xD5)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(3).arg1(3), EncCmd(0xD4)),
+        # Fan speed_count 6 configured, used for send only
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,2).arg1(6), EncCmd(0xD6)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(3,4).arg1(6), EncCmd(0xD5)).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(5,6).arg1(6), EncCmd(0xD4)).no_reverse(),
     ]),
 
     FullTranslator('default_translator_zjv1', 'default_translator_zjv1v2_common', [
@@ -599,8 +624,9 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(FanCmd(CT.FAN_DIR).arg0(1), EncCmd(0xDA)),
         Trans(FanCmd(CT.FAN_OSC).arg0(0), EncCmd(0xDE).arg0(1)),
         Trans(FanCmd(CT.FAN_OSC).arg0(1), EncCmd(0xDE).arg0(2)),
-        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,None), EncCmd(0xD3)).copy_arg0(),
         Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0(0), EncCmd(0xD1)),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,None).arg1(3), EncCmd(0xD3)).multi_arg0(2).no_reverse(),
+        Trans(FanCmd(CT.FAN_ONOFF_SPEED).arg0_range(1,None).arg1(6), EncCmd(0xD3)).copy_arg0(),
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(3).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)), # night mode
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(0).arg1(1), EncCmd(0xA7).arg0(1)),
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).param(2).arg0(1).arg1(0), EncCmd(0xA7).arg0(2)),
