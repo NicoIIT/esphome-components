@@ -54,11 +54,12 @@ class CmdParam:
     def __repr__(self):
         pres = []
         if self.is_eq():
-            pres.append(f", {self._conf_name} equal: {self._min}")
-        if self._min is not None:
-            pres.append(f", {self._conf_name} min: {self._min}")
-        if self._max is not None:
-            pres.append(f", {self._conf_name} max: {self._max}")
+            pres.append(f"{self._conf_name}: {self._min}")
+        else:
+            if self._min is not None:
+                pres.append(f"{self._conf_name} min: {self._min}")
+            if self._max is not None:
+                pres.append(f"{self._conf_name} max: {self._max}")
         return ", ".join(pres)
     
     def is_eq(self):
@@ -120,28 +121,25 @@ class CmdBase:
             self._attribs[cmd_param._conf_name] = cmd_param
         
     def __repr__(self):
-        pres = ""
-        for cmd_param in self._attribs.values():
-            pres += repr(cmd_param)
-        return pres
+        return ", ".join(list(filter(len, [ repr(cmd_param) for cmd_param in self._attribs.values() ])))
 
     def get_param(self, param_name):
         return self._attribs[param_name]
 
-    def set_eq(self, val, param):
+    def set_eq(self, param, val):
         self._attribs[param]._min = val
         self._attribs[param]._max = val
         return self
 
-    def set_min(self, val, param):
+    def set_min(self, param, val):
         self._attribs[param]._min = val
         return self
 
-    def set_max(self, val, param):
+    def set_max(self, param, val):
         self._attribs[param]._max = val
         return self
 
-    def add_action(self, val, action_type, param):
+    def add_action(self, param, action_type, val):
         self._attribs[param]._actions.append(action_type(val))
         return self
 
@@ -160,35 +158,55 @@ class CmdBase:
     def get_cpp_cond(self):
         return " && ".join(list(filter(len, [ cmd_param.get_cpp_cond() for cmd_param in self._attribs.values() ])))
     
-    def get_cpp_exec(self, ):
+    def get_cpp_exec(self):
         return "".join([ cmd_param.get_cpp_exec() for cmd_param in self._attribs.values()])
     
-    def define_shortcuts(class_vars, params):
-        for param in params:
-            class_vars[f"{param}"] = partialmethod(CmdBase.set_eq, param=param)
-            class_vars[f"{param}_min"] = partialmethod(CmdBase.set_min, param=param)
-            class_vars[f"{param}_max"] = partialmethod(CmdBase.set_max, param=param)
-            class_vars[f"inv_{param}"] = partialmethod(CmdBase.add_action, action_type=InverseParamAction, param=param)
-            class_vars[f"multi_{param}"] = partialmethod(CmdBase.add_action, action_type=MultiplyParamAction, param=param)
-            class_vars[f"modulo_{param}"] = partialmethod(CmdBase.add_action, action_type=ModuloParamAction, param=param)
+    def shortcuts_map(param, with_modifier):
+        shortcuts = {}
+        shortcuts[f"{param}"] = partialmethod(CmdBase.set_eq, param)
+        if with_modifier:
+            shortcuts[f"{param}_min"] = partialmethod(CmdBase.set_min, param)
+            shortcuts[f"{param}_max"] = partialmethod(CmdBase.set_max, param)
+            shortcuts[f"inv_{param}"] = partialmethod(CmdBase.add_action, param, InverseParamAction)
+            shortcuts[f"multi_{param}"] = partialmethod(CmdBase.add_action, param, MultiplyParamAction)
+            shortcuts[f"modulo_{param}"] = partialmethod(CmdBase.add_action, param, ModuloParamAction)
+        return shortcuts
 
+class Shortcut:
+    def __init__(self, name, method, validator, required):
+        self._name = name
+        self._method = method
+        self._validator = validator
+        self._required = required
 
-ENC_CMD_ATTRIBS = [
-    ["cmd", "cmd", cv.uint8_t],
-    ["param", "param1", cv.uint8_t],
-    ["arg0", "args[0]", cv.uint8_t],
-    ["arg1", "args[1]", cv.uint8_t],
-    ["arg2", "args[2]", cv.uint8_t],
-]
+class Shortcuts(list):
+    def create(self, class_vars):
+        for shortcut in self:
+            class_vars[shortcut._name] = shortcut._method
+
+    def get_schema(self):
+        return {**{cv.Required(f"{shortcut._name}"): shortcut._validator for shortcut in self if shortcut._required},
+                **{cv.Optional(f"{shortcut._name}"): shortcut._validator for shortcut in self if not shortcut._required}}
+
 
 class EncCmd(CmdBase):
     ## Represents a Condition on a BleAdvEncCmd
+    ATTRIBS = [
+        # Name, Cpp Name, validator, with modifiers, required
+        ["cmd", "cmd", cv.uint8_t, False, True],
+        ["param", "param1", cv.uint8_t, True, False],
+        ["arg0", "args[0]", cv.uint8_t, True, False],
+        ["arg1", "args[1]", cv.uint8_t, True, False],
+        ["arg2", "args[2]", cv.uint8_t, True, False],
+    ]
+
     def __init__(self, cmd: int):
-        super().__init__([ CmdParam(x[0], x[1], "{ename}") for x in ENC_CMD_ATTRIBS ])
+        super().__init__([ CmdParam(x[0], x[1], "{ename}") for x in EncCmd.ATTRIBS ])
         self.cmd("0x%02X" % cmd)
 
     # shortcut functions arg0 / param / arg1_range / ...
-    CmdBase.define_shortcuts(vars(), [x[0] for x in ENC_CMD_ATTRIBS])
+    SHORTCUTS = Shortcuts([ Shortcut(k, v, attrib[2], attrib[4]) for attrib in ATTRIBS for k,v in CmdBase.shortcuts_map(attrib[0], attrib[3]).items() ])
+    SHORTCUTS.create(vars())
 
 def validate_gen_cmd(value):
     return str(getattr(CT, value))
@@ -196,26 +214,28 @@ def validate_gen_cmd(value):
 def validate_gen_type(value):
     return str(getattr(ET, value))
 
-GEN_CMD_ATTRIBS = [
-    ["cmd", "cmd", validate_gen_cmd],
-    ["type", "ent_type", validate_gen_type],
-    ["index", "ent_index", cv.uint8_t],
-    ["param", "param", cv.uint8_t],
-    ["arg0", "args[0]", cv.float_range()],
-    ["arg1", "args[1]", cv.float_range()],
-    ["arg2", "args[2]", cv.float_range()],
-]
-
 class GenCmd(CmdBase):
     ## Represents a Condition on a BleAdvGenCmd
+    ATTRIBS = [
+        # Name, Cpp Name, validator, with modifiers, required
+        ["cmd", "cmd", validate_gen_cmd, False, True],
+        ["type", "ent_type", validate_gen_type, False, True],
+        ["index", "ent_index", cv.uint8_t, False, False],
+        ["param", "param", cv.uint8_t, True, False],
+        ["arg0", "args[0]", cv.float_range(), True, False],
+        ["arg1", "args[1]", cv.float_range(), True, False],
+        ["arg2", "args[2]", cv.float_range(), True, False],
+    ]
+
     def __init__(self, cmd: str, entity: str, index: int = 0):
-        super().__init__([ CmdParam(x[0], x[1], "{gname}") for x in GEN_CMD_ATTRIBS ])
+        super().__init__([ CmdParam(x[0], x[1], "{gname}") for x in GenCmd.ATTRIBS ])
         self.cmd(str(cmd))
         self.type(str(entity))
         self.index(index)
 
     # shortcut functions cmd / type / index / arg0 / param / arg1_range / ...
-    CmdBase.define_shortcuts(vars(), [x[0] for x in GEN_CMD_ATTRIBS])
+    SHORTCUTS = Shortcuts([ Shortcut(k, v, attrib[2], attrib[4]) for attrib in ATTRIBS for k,v in CmdBase.shortcuts_map(attrib[0], attrib[3]).items() ])
+    SHORTCUTS.create(vars())
 
 
 class FanCmd(GenCmd):
@@ -240,46 +260,49 @@ class Trans:
     def __init__(self, gen: GenCmd, enc: EncCmd):
         self._gen: GenCmd = gen
         self._enc: EncCmd = enc
-        self._raw_e2g = ""
-        self._raw_g2e = ""
         self._no_reverse = False
         self._no_direct = False
 
     def __repr__(self):
         return f"Gen: {self._gen} <=> Enc: {self._enc}"
 
-    def no_direct(self):
+    def no_direct(self, val=True):
         # Flags the translator as not used in direct g2e
-        self._no_direct = True
+        self._no_direct = val
         return self
 
-    def no_reverse(self):
+    def no_reverse(self, val=True):
         # Flags the translator as not used in reverse e2g 
-        self._no_reverse = True
+        self._no_reverse = val
         return self
 
-    def field_multiply(self, multi, g_param, e_param):
-        if multi != 1:
-            self._gen.get_param(g_param)._actions.append(MultiplyParamAction(float(multi)))
-        self._gen.get_param(g_param)._copy_from.append(self._enc.get_param(e_param))
-        self._enc.get_param(e_param)._copy_from.append(self._gen.get_param(g_param))
+    def _field_copy(self, g_param, e_param, val=True):
+        if val:
+            self._gen.get_param(g_param)._copy_from.append(self._enc.get_param(e_param))
+            self._enc.get_param(e_param)._copy_from.append(self._gen.get_param(g_param))
         return self
         
+    def _field_multiply(self, g_param, e_param, multi):
+        self._gen.get_param(g_param)._actions.append(MultiplyParamAction(float(multi)))
+        return self._field_copy(g_param, e_param)
+
     def get_cpp_g2e(self, gname, ename):
-        raw_g2e = self._enc.get_cpp_exec().format(gname=gname, ename=ename) + self._raw_g2e.format(gname=gname, ename=ename)
-        return f"if ({self._gen.get_cpp_cond().format(gname=gname, ename=ename)}) {{ {raw_g2e}return true; }}"
+        return f"if ({self._gen.get_cpp_cond().format(gname=gname, ename=ename)}) {{ {self._enc.get_cpp_exec().format(gname=gname, ename=ename)}return true; }}"
         
     def get_cpp_e2g(self, gname, ename):
-        raw_e2g = self._gen.get_cpp_exec().format(gname=gname, ename=ename) + self._raw_e2g.format(gname=gname, ename=ename)
-        return f"if ({self._enc.get_cpp_cond().format(gname=gname, ename=ename)}) {{ {raw_e2g}return true; }}"
+        return f"if ({self._enc.get_cpp_cond().format(gname=gname, ename=ename)}) {{ {self._gen.get_cpp_exec().format(gname=gname, ename=ename)}return true; }}"
 
     # shortcut 'copy' and 'multi' functions for each combination of args and param
     # copy_arg0 / multi_arg0_to_arg2 / multi_param / copy_param_to_arg1 / ...
-    for g_attr in GEN_CMD_ATTRIBS:
-        for e_attr in ENC_CMD_ATTRIBS:
+    SHORTCUTS = Shortcuts()
+    for g_attr in GenCmd.ATTRIBS:
+        for e_attr in EncCmd.ATTRIBS:
             sec_arg = f"_to_{e_attr[0]}" if (e_attr[0] != g_attr[0]) else ""
-            vars()[f"copy_{g_attr[0]}{sec_arg}"] = partialmethod(field_multiply, multi=1, g_param=g_attr[0], e_param=e_attr[0])
-            vars()[f"multi_{g_attr[0]}{sec_arg}"] = partialmethod(field_multiply, g_param=g_attr[0], e_param=e_attr[0])
+            SHORTCUTS.append(Shortcut(f"copy_{g_attr[0]}{sec_arg}", partialmethod(_field_copy, g_attr[0], e_attr[0]), cv.boolean, False))
+            SHORTCUTS.append(Shortcut(f"multi_{g_attr[0]}{sec_arg}", partialmethod(_field_multiply, g_attr[0], e_attr[0]), cv.float_range(), False))
+    SHORTCUTS.create(vars())
+    SHORTCUTS.append(Shortcut(f"no_direct", no_direct, cv.boolean, False))
+    SHORTCUTS.append(Shortcut(f"no_reverse", no_reverse, cv.boolean, False))
 
 
 class FullTranslator:
@@ -387,52 +410,19 @@ class FullTranslator:
             gen_file.write('\n} // namespace esphome')
             gen_file.write('\n')
 
-def validate_modifier(value):
-    if not hasattr(Trans, value):
-        raise cv.Invalid(f"Modifier function '{value}' invalid")
-    return value
-
 BASE_TRANSLATOR_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(BleAdvTranslator),
     cv.Optional("extend"): cv.use_id(BleAdvTranslator),
     cv.Optional("cmds", default=[]): cv.ensure_list(cv.Schema({
-        cv.Required("gen"): cv.Schema({
-            **{cv.Optional(f"{x[0]}", default=None): cv.Any(None, x[2]) for x in GEN_CMD_ATTRIBS},
-            **{cv.Optional(f"{x[0]}_range", default=None): cv.Any(None, cv.Schema({
-                cv.Optional("min", default=None): cv.Any(None, x[2]),
-                cv.Optional("max", default=None): cv.Any(None, x[2]),
-            })) for x in GEN_CMD_ATTRIBS},
-        }),
-        cv.Required("enc"): cv.Schema({
-            **{cv.Optional(f"{x[0]}", default=None): cv.Any(None, x[2]) for x in ENC_CMD_ATTRIBS},
-            **{cv.Optional(f"{x[0]}_range", default=None): cv.Any(None, cv.Schema({
-                cv.Optional("min", default=None): cv.Any(None, x[2]),
-                cv.Optional("max", default=None): cv.Any(None, x[2]),
-            })) for x in ENC_CMD_ATTRIBS},
-        }),
-        cv.Optional("modifiers", default=[]): cv.ensure_list(cv.Schema({
-            cv.Required("function"): validate_modifier,
-            cv.Optional("args", default=[]): cv.ensure_list(cv.string),
-        })),
+        cv.Required("gen"): cv.Schema(GenCmd.SHORTCUTS.get_schema()),
+        cv.Required("enc"): cv.Schema(EncCmd.SHORTCUTS.get_schema()),
+        cv.Optional("trans"): cv.Schema(Trans.SHORTCUTS.get_schema()),
     })),
 })
 
-def cmd_from_enc_config(cmd_conf):
-    cmd = EncCmd(cmd_conf['cmd'])
-    for params in ENC_CMD_ATTRIBS:
-        getattr(cmd, params[0])(cmd_conf[params[0]])
-        range_param = f"{params[0]}_range"
-        if (range_val := cmd_conf[range_param]) is not None:
-            getattr(cmd, range_param)(range_val['min'], range_val['max'])
-    return cmd
-
-def cmd_from_gen_config(cmd_conf):
-    cmd = GenCmd(cmd_conf['cmd'], cmd_conf['type'], cmd_conf['index'])
-    for params in GEN_CMD_ATTRIBS:
-        getattr(cmd, params[0])(cmd_conf[params[0]])
-        range_param = f"{params[0]}_range"
-        if (range_val := cmd_conf[range_param]) is not None:
-            getattr(cmd, range_param)(range_val['min'], range_val['max'])
+def cmd_config(cmd, cmd_conf):
+    for func, val in cmd_conf.items():
+        getattr(cmd, func)(val)
     return cmd
 
 def load_default_translators(translators):
@@ -441,9 +431,9 @@ def load_default_translators(translators):
         extend_id = config["extend"].id if "extend" in config else None
         cmds = []
         for x in config["cmds"]:
-            cmd_tr = Trans(cmd_from_gen_config(x['gen']), cmd_from_enc_config(x['enc']))
-            for modif in x["modifiers"]:
-                getattr(cmd_tr, modif["function"])(*modif["args"])
+            cmd_tr = Trans(cmd_config(GenCmd(CT.NOCMD, ET.NOTYPE), x['gen']), cmd_config(EncCmd(0xFF), x['enc']))
+            for func, val in x.get("trans", {}).items():
+                getattr(cmd_tr, func)(val)
             cmds.append(cmd_tr)
         FullTranslator(config[CONF_ID].id, extend_id, cmds)
 
