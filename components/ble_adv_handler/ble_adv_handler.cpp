@@ -270,7 +270,7 @@ uint8_t BleAdvEncoder::checksum(uint8_t * buf, size_t len) const {
 bool BleAdvEncoder::check_eq(uint32_t ref, uint32_t comp, const char * msg) const {
   if (ref != comp) {
     if (this->debug_mode_) {
-      ESP_LOGD(this->id_.c_str(), "'%s' differs - expected: '0x%X', received: '0x%X'", msg, ref, comp);
+      ESP_LOGD(this->id_.c_str(), "'%s' differs - expected: '0x%lX', received: '0x%X'", msg, ref, comp);
     }
     return false;
   }

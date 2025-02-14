@@ -234,7 +234,7 @@ struct BleAdvConfig_t {
   uint8_t index;
   std::string str() const {
     char str[100] = "";
-    sprintf(str, "  encoding: %s\n  variant: %s\n  forced_id: 0x%X\n  index: %d", 
+    sprintf(str, "  encoding: %s\n  variant: %s\n  forced_id: 0x%lX\n  index: %d", 
             encoding.c_str(), variant.c_str(), forced_id, index);
     return str;
   }
