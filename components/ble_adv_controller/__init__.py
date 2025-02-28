@@ -52,7 +52,7 @@ CONFIG_SCHEMA = cv.All(
     DEVICE_BASE_CONFIG_SCHEMA.extend(
     {
         cv.GenerateID(CONF_ID): cv.declare_id(BleAdvController),
-        cv.Optional(CONF_DURATION, default=200): cv.All(cv.positive_int, cv.Range(min=100, max=500)),
+        cv.Optional(CONF_DURATION, default=200): cv.All(cv.positive_int, cv.Range(min=100, max=1000)),
         cv.Optional(CONF_BLE_ADV_MAX_DURATION, default=1000): cv.All(cv.positive_int, cv.Range(min=300, max=10000)),
         cv.Optional(CONF_BLE_ADV_SEQ_DURATION, default=100): cv.All(cv.positive_int, cv.Range(min=0, max=150)),
         cv.Optional(CONF_REVERSED, default=False): cv.boolean,
@@ -73,7 +73,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(var.set_setup_priority(300)) # start after Bluetooth
     await setup_ble_adv_device(var, config)
-    cg.add(var.set_min_tx_duration(config[CONF_DURATION], 100, 500, 10))
+    cg.add(var.set_min_tx_duration(config[CONF_DURATION], 100, 1000, 10))
     cg.add(var.set_max_tx_duration(config[CONF_BLE_ADV_MAX_DURATION]))
     cg.add(var.set_seq_duration(config[CONF_BLE_ADV_SEQ_DURATION]))
     cg.add(var.set_reversed(config[CONF_REVERSED]))
