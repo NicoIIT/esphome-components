@@ -106,6 +106,13 @@ BLE_ADV_CODECS = {
                 "ble_param": [ 0x19, 0x03 ],
                 "header": [0xF0, 0x08],
             },
+            "v3b": {
+                "class": 'FanLampEncoderV2',
+                "translator": 'default_translator_flv2',
+                "args": [ [0x20, 0x80, 0x00], 0x0100, True ],
+                "ble_param": [ 0x19, 0x03 ],
+                "header": [0xF0, 0x08],
+            },
         },
         "legacy_variants": {
             "v1a": "please use 'other - v1a' for exact replacement, or 'lampsmart_pro' v1 / v3 if effectively using LampSmart Pro app",

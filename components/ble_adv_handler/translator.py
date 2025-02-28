@@ -489,9 +489,9 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.ON, 1), EncCmd(0x12)),
         Trans(LightCmd(CT.OFF, 1), EncCmd(0x13)),
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0x21).param(0x00)).multi_arg0(255).multi_arg1(255),
-        # Physical Remote and app pone shortcut buttons, only reverse
+        # Physical Remote and app phone shortcut buttons, only reverse
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM), EncCmd(0x21).param(0x40)).multi_arg0(255).multi_arg1(255).no_direct(),
-        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(0.1), EncCmd(0x23)).no_direct(), # night mode
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0.1).arg1(0.1), EncCmd(0x23)).no_direct(), # night mode
         Trans(LightCmd(CT.LIGHT_CWW_WARM).param(1), EncCmd(0x21).param(0x24)).no_direct(), # K+
         Trans(LightCmd(CT.LIGHT_CWW_WARM).param(2), EncCmd(0x21).param(0x18)).no_direct(), # K-
         Trans(LightCmd(CT.LIGHT_CWW_DIM).param(1), EncCmd(0x21).param(0x14)).no_direct(), # B+
