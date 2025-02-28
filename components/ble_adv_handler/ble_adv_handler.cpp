@@ -160,7 +160,7 @@ std::string BleAdvGenCmd::str() const {
       ind = std::sprintf(ret, "LIGHT_RGB_RGB - r: %.0f%%, g: %.0f%%, b: %.0f%%", this->args[0] * 100, this->args[1] * 100, this->args[2] * 100);
       break;
     case CommandType::FAN_FULL:
-      ind = std::sprintf(ret, "FAN_FULL/0x%X - %0.f/%0.f/%0.f", this->param, this->args[0], this->args[1], this->args[2]);
+      ind = std::sprintf(ret, "FAN_FULL/0x%02X - %0.f/%0.f/%0.f", this->param, this->args[0], this->args[1], this->args[2]);
       break;
     case CommandType::FAN_ONOFF_SPEED:
       ind = std::sprintf(ret, "FAN_ONOFF_SPEED - %0.f/%0.f", this->args[0], this->args[1]);

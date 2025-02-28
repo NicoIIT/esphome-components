@@ -14,7 +14,7 @@ void BleAdvRemote::setup() {
 
 void BleAdvRemote::dump_config() {
   ESP_LOGCONFIG(TAG, "BleAdvRemote '%s'", this->get_object_id().c_str());
-  ESP_LOGCONFIG(TAG, "  Hash ID '%X'", this->params_.id_);
+  ESP_LOGCONFIG(TAG, "  Hash ID '%lX'", this->params_.id_);
   ESP_LOGCONFIG(TAG, "  Index '%d'", this->params_.index_);
 }
 
