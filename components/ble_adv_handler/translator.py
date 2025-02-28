@@ -626,7 +626,7 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.LIGHT_CWW_WARM_DIM).inv_arg0(1.0), EncCmd(0x20)).multi_arg0(100).multi_arg1(100),
     ]),
 
-    FullTranslator('default_translator_zhimei_common', 'base', [
+    FullTranslator('default_translator_zhimei_common_light', 'base', [
         Trans(ContCmd(CT.UNPAIR), EncCmd(0xB0)),
         Trans(ContCmd(CT.TIMER), EncCmd(0xA5).multi_arg0(60.0).modulo_arg1(60)).copy_arg0().copy_arg0_to_arg1(),
         Trans(LightCmd(CT.ON), EncCmd(0xB3)),
@@ -634,6 +634,31 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.ON, 1), EncCmd(0xA6).arg0(2)),
         Trans(LightCmd(CT.OFF, 1), EncCmd(0xA6).arg0(1)),
         Trans(LightCmd(CT.LIGHT_RGB_FULL, 1), EncCmd(0xCA)).multi_arg0(255).multi_arg1(255).multi_arg2(255),
+        Trans(LightCmd(CT.LIGHT_CWW_DIM).multi_arg0(1000.0), EncCmd(0xB5).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
+        Trans(LightCmd(CT.LIGHT_CWW_WARM).inv_arg0(1.0).multi_arg0(1000.0), EncCmd(0xB7).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
+        # Shortcut phone app buttons, only reverse
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0.1).arg1(0.1), EncCmd(0xA1).arg0(25).arg1(25)).no_direct(), # night mode
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(0).arg1(1), EncCmd(0xA7).arg0(1)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(0), EncCmd(0xA7).arg0(2)).no_direct(),
+        Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(1), EncCmd(0xA7).arg0(3)).no_direct(),
+    ]),
+
+    FullTranslator('default_translator_zmv1', 'default_translator_zhimei_common_light', [
+        Trans(ContCmd(CT.PAIR), EncCmd(0xB4).arg0(170).arg1(102).arg2(85)),
+    ]),
+
+    FullTranslator('default_translator_zmv2', 'default_translator_zhimei_common_light', [
+        Trans(ContCmd(CT.PAIR), EncCmd(0xB4)),
+    ]),
+
+    FullTranslator('default_translator_zhimei_fan', 'base', [
+        Trans(ContCmd(CT.UNPAIR), EncCmd(0xB0)),
+        Trans(ContCmd(CT.PAIR), EncCmd(0xB4).arg0(170).arg1(102).arg2(85)),
+        Trans(ContCmd(CT.TIMER), EncCmd(0xD4)).multi_arg0(1.0 / 60.0),
+        Trans(AllCmd(CT.ON), EncCmd(0xB3)),
+        Trans(AllCmd(CT.OFF), EncCmd(0xB2)),
+        Trans(LightCmd(CT.ON), EncCmd(0xA6).arg0(2)),
+        Trans(LightCmd(CT.OFF), EncCmd(0xA6).arg0(1)),
         Trans(LightCmd(CT.LIGHT_CWW_DIM).multi_arg0(1000.0), EncCmd(0xB5).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
         Trans(LightCmd(CT.LIGHT_CWW_WARM).inv_arg0(1.0).multi_arg0(1000.0), EncCmd(0xB7).multi_arg1(256.0).modulo_arg2(256)).copy_arg0_to_arg1().copy_arg0_to_arg2(),
         Trans(FanCmd(CT.FAN_DIR).arg0(0), EncCmd(0xD9)),
@@ -650,16 +675,5 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
         Trans(LightCmd(CT.LIGHT_CWW_COLD_WARM).arg0(1).arg1(1), EncCmd(0xA7).arg0(3)).no_direct(),
     ]),
 
-    FullTranslator('default_translator_zmv0', 'default_translator_zhimei_common', [
-        Trans(ContCmd(CT.PAIR), EncCmd(0xB4).arg0(170).arg1(102).arg2(85)),
-    ]),
-    
-    FullTranslator('default_translator_zmv1', 'default_translator_zhimei_common', [
-        Trans(ContCmd(CT.PAIR), EncCmd(0xB4).arg0(170).arg1(102).arg2(85)),
-    ]),
-
-    FullTranslator('default_translator_zmv2', 'default_translator_zhimei_common', [
-        Trans(ContCmd(CT.PAIR), EncCmd(0xB4)),
-    ]),
 ]
 

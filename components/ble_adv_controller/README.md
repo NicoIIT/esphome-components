@@ -27,9 +27,9 @@ Needs `ble_adv_handler` (forced include) to work.
 
 - **variant** (Optional): the variant of the encoding
     - For 'zhijia': Can be v0 (MSC16), v1 (MSC26) or v2 (MSC26A), default is v2
-    - For 'zhimei': Can be v0 , v1, v1b or v2, default is v1
+    - For 'zhimei': Can be vf0 or vf1 for Lamp with Fan, or v1, v1b or v2 for light only, default is v1
     - For 'fanlamp_pro': Can be any of v1, v2 or v3, default is v3
-    - For 'lampsmart_pro': Can be v1, v2 or v3, default is v3
+    - For 'lampsmart_pro': Can be v1, v2, v3 or v3b, default is v3
     - For 'agarce': Can be v3 or v4, default is v4
     - For 'remote': can be v1 or v3 (only remotes we know for now..), default is v3
     - For 'other': Can be any of v1a / v1b / v2 / v3, they are corresponding to legacy variants extracted from old version of this repo.

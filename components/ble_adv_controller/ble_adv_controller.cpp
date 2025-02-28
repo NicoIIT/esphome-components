@@ -60,6 +60,7 @@ void BleAdvController::all_on() {
 
 void BleAdvController::set_timer(float duration) {  // duration is the number of minutes
   this->cancel_timer();
+  if (duration == 0) return;
   BleAdvGenCmd gen_cmd(CommandType::TIMER, EntityType::CONTROLLER);
   gen_cmd.args[0] = duration;
   this->controller_command(gen_cmd);

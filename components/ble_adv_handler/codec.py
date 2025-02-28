@@ -199,13 +199,21 @@ BLE_ADV_CODECS = {
     },
     "zhimei": {
         "variants": {
-            "v0": {
+            "vf0": {
                 "class": 'ZhimeiEncoderV0',
-                "translator": 'default_translator_zmv0',
+                "translator": 'default_translator_zhimei_fan',
                 "args": [  ],
                 "max_forced_id": 0xFFFF,
                 "ble_param": [ 0x19, 0x03 ],
                 "header": [ 0x55 ],
+            },
+            "vf1": {
+                "class": 'ZhimeiEncoderV1',
+                "translator": 'default_translator_zhimei_fan',
+                "args": [  ],
+                "max_forced_id": 0xFFFF,
+                "ble_param": [ 0x1A, 0x03 ],
+                "header": [ 0x48, 0x46, 0x4B, 0x4A ],
             },
             "v1": {
                 "class": 'ZhimeiEncoderV1',
