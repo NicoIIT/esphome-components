@@ -32,12 +32,12 @@ public:
 
 template<typename... Ts> class AllOnAction : public BaseControllerAction<Ts...> {
 public:
-  void play(Ts... x) override { this->controller_->allon(); }
+  void play(Ts... x) override { this->controller_->all_on(); }
 };
 
 template<typename... Ts> class AllOffAction : public BaseControllerAction<Ts...> {
 public:
-  void play(Ts... x) override { this->controller_->alloff(); }
+  void play(Ts... x) override { this->controller_->all_off(); }
 };
 
 template<typename... Ts> class CustomCmdAction : public BaseControllerAction<Ts...> {

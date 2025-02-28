@@ -500,7 +500,7 @@ BLE_ADV_DEFAULT_TRANSLATORS = [
     ]),
 
     FullTranslator('default_translator_flv1', 'default_translator_fanlamp_common', [
-        Trans(ContCmd(CT.TIMER).arg0_max(0xFF), EncCmd(0x51).arg0_max(0xFF)).copy_arg0(),
+        Trans(ContCmd(CT.TIMER).arg0_max(0xFF), EncCmd(0x51)).copy_arg0(),
         Trans(ContCmd(CT.TIMER).arg0_min(0x100), EncCmd(0x51).arg0(0xFF)).no_reverse(),
         Trans(FanCmd(CT.FAN_DIR), EncCmd(0x15)).copy_arg0(),
         Trans(FanCmd(CT.FAN_OSC), EncCmd(0x16)).copy_arg0(),
