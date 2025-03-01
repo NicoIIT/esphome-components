@@ -4,7 +4,7 @@
 
 ### New features
 * Addition of variant vf0 and vf1 for 'zhimei' encoding to handle the Ceiling Fan / Light
-* Addition of variant v3b for 'lampsmart_pro' to cope with slightly different iOS encoding
+* Addition of new encoding 'lampsmart_ios' with variants v1 / v1b / v3 / v3b to cope with slightly different iOS encoding for lampsmart pro
 * Addition of variants v2/v21 for fanlamp_pro remote control
 * Addition of "on_emitted" trigger at ble_adv_controller level
 * Various bug fixes (compilation errors with esp-idf framework and esp32-c6 board, correcting 'all_on' and 'all_off' actions)

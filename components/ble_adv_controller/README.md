@@ -18,7 +18,8 @@ Needs `ble_adv_handler` (forced include) to work.
     - 'zhiguang', for 'Zhi Guang' app, same settings as 'zhijia'
     - 'zhimei', for 'ZhiMeiDengKong' app
     - 'fanlamp_pro', for 'FanLamp Pro' app or 'ApplianceSmart' App
-    - 'lampsmart_pro', for 'LampSmart Pro' App, 'LampSmart Pro-Soft Lighting' App or 'Vmax smart' App
+    - 'lampsmart_pro', for 'LampSmart Pro' Android App, 'LampSmart Pro-Soft Lighting' App or 'Vmax smart' App
+    - 'lampsmart_ios', for 'LampSmart Pro' iOS App
     - 'agarce', for 'Smart Light' App
     - 'remote', for some of the remotes we know
     - 'other', for legacy variants from initial repos, may correspond to removed app 'FanLamp' or 'ControlSwitch'
@@ -30,6 +31,7 @@ Needs `ble_adv_handler` (forced include) to work.
     - For 'zhimei': Can be vf0 or vf1 for Lamp with Fan, or v1, v1b or v2 for light only, default is v1
     - For 'fanlamp_pro': Can be any of v1, v2 or v3, default is v3
     - For 'lampsmart_pro': Can be v1, v2, v3 or v3b, default is v3
+    - For 'lampsmart_ios': Can be v1, v1b, v3 or v3b, default is v3
     - For 'agarce': Can be v3 or v4, default is v4
     - For 'remote': can be v1 or v3 (only remotes we know for now..), default is v3
     - For 'other': Can be any of v1a / v1b / v2 / v3, they are corresponding to legacy variants extracted from old version of this repo.
