@@ -274,6 +274,20 @@ BLE_ADV_CODECS = {
                 "header":[0x56, 0x55, 0x18, 0x87, 0x52],
                 # 1E.FF.56.55.18.87.52.B6.5F.2B.5E.00.FC.31.51.50.50.9A.08.24.0A.EC.FC.A9.7B.8E.0D.4A.67.60.57
             },
+            "v2": {
+                "class": 'FanLampEncoderV2',
+                "translator": 'default_translator_flv2',
+                "args": [ [0x10, 0x00, 0x56], 0x0400, False ],
+                "ble_param": [ 0x02, 0x16 ],
+                "header": [0xF0, 0x08],
+            },
+            "v21": {
+                "class": 'FanLampEncoderV2',
+                "translator": 'default_translator_flv2',
+                "args": [ [0x10, 0x00, 0x56], 0x0100, False ],
+                "ble_param": [ 0x02, 0x16 ],
+                "header": [0xF0, 0x08],
+            },
             "v3": {
                 "class": 'FanLampEncoderV2',
                 "translator": 'default_translator_flv2',

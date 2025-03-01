@@ -1,5 +1,13 @@
 # MAJOR CHANGE LOG
 
+## 01 March 2025
+
+### New features
+* Addition of variant vf0 and vf1 for 'zhimei' encoding to handle the Ceiling Fan / Light
+* Addition of variant v3b for 'lampsmart_pro' to cope with slightly different iOS encoding
+* Addition of variants v2/v21 for fanlamp_pro remote control 
+* Various bug fixes (compilation errors with esp-idf framework and esp32-c6 board, correcting 'all_on' and 'all_off' actions)
+
 ## 25 January 2025
 
 ### New features
