@@ -64,5 +64,10 @@ public:
   void play(Ts... x) override { this->controller_->raw_inject(this->raw_.value(x...)); }
 };
 
+class BleAdvSentTrigger : public BleAdvBaseSentTrigger {
+public:
+  explicit BleAdvSentTrigger(BleAdvController *parent) { parent->register_sent_trigger(this); }
+};
+
 }
 }

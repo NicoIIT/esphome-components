@@ -98,6 +98,23 @@ Needs `ble_adv_handler` (forced include) to work.
   ```
   And you have the info: `enc: 0x10 - param1 0x00 - args[0,0]` !
 
+## Automation Triggers
+
+- **ble_adv_controller.on_emitted**
+
+This trigger is activated each time a command is effectivelly emitted by the controller. An Instance of BleAdvGenCmd is given as 'g' parameter, and BleAdvEncCmd as 'e'.
+
+```yaml
+ble_adv_controller:
+  - id: my_controller
+    encoding: xxxx
+    variant: xxxx
+    on_emitted:
+      - logger.log:
+          format: "Emitted command: gen - %s, enc - %s"
+          args: ["g.str().c_str()", "e.str().c_str()"]
+```
+
 ## Call Actions from HA
 All those actions can also be called as HA action directly with the following name and the same options (except the controller_id that is in the name instead of the options) using the [developers tools](https://www.home-assistant.io/docs/tools/dev-tools/):
 ```

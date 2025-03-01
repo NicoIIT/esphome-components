@@ -161,9 +161,14 @@ bool BleAdvController::enqueue(const BleAdvGenCmd &gen_cmd) {
     std::vector< BleAdvEncCmd > enc_cmds;
     encoder->translate_g2e(enc_cmds, gen_cmd);
     for (auto & enc_cmd: enc_cmds) {
+      // triggers
+      for (auto & sent_trigger: this->sent_triggers_) {
+        sent_trigger->trigger(gen_cmd, enc_cmd);
+      }
       encoder->encode(this->commands_.back().params_, enc_cmd, this->params_);
     }
   }
+
   
   return !this->commands_.back().params_.empty();
 }

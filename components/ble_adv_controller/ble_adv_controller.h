@@ -19,6 +19,8 @@ using BleAdvGenCmd = ble_adv_handler::BleAdvGenCmd;
 using BleAdvEncCmd = ble_adv_handler::BleAdvEncCmd;
 class BleAdvEntity;
 
+using BleAdvBaseSentTrigger = Trigger<const BleAdvGenCmd &, const BleAdvEncCmd &>;
+
 /**
   BleAdvController:
     One physical device controlled == One Controller.
@@ -59,6 +61,9 @@ public:
 
   bool enqueue(const BleAdvGenCmd & cmd);
   void enqueue(ble_adv_handler::BleAdvParams && params);
+
+  // Triggers
+  void register_sent_trigger(BleAdvBaseSentTrigger * trigger) { this->sent_triggers_.push_back(trigger); }
 
 protected:
   void controller_command(const BleAdvGenCmd & gen_cmd);
@@ -102,6 +107,10 @@ protected:
 
   // skip next commands
   bool skip_commands_{false};
+
+  // Triggers
+  std::vector< BleAdvBaseSentTrigger * > sent_triggers_;
+
 };
 
 /**

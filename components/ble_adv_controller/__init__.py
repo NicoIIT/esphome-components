@@ -7,6 +7,7 @@ from esphome.const import (
     CONF_ID,
     CONF_REVERSED,
     CONF_INDEX,
+    CONF_TRIGGER_ID,
  )
 from esphome.cpp_helpers import setup_entity
 from esphome.components.ble_adv_handler import (
@@ -18,6 +19,8 @@ from esphome.automation import (
     maybe_simple_id,
     register_action,
     Action,
+    validate_automation,
+    build_automation,
 )
 from .const import (
     CONF_BLE_ADV_CONTROLLER_ID,
@@ -25,6 +28,7 @@ from .const import (
     CONF_BLE_ADV_SEQ_DURATION,
     CONF_BLE_ADV_SHOW_CONFIG,
     CONF_BLE_ADV_CANCEL_TIMER,
+    CONF_BLE_ADV_ON_EMITTED,
 )
 
 AUTO_LOAD = ["ble_adv_handler"]
@@ -33,6 +37,9 @@ MULTI_CONF = True
 bleadvcontroller_ns = cg.esphome_ns.namespace('ble_adv_controller')
 BleAdvController = bleadvcontroller_ns.class_('BleAdvController', cg.Component, cg.EntityBase)
 BleAdvEntity = bleadvcontroller_ns.class_('BleAdvEntity', cg.Component)
+BleAdvSentrigger = bleadvcontroller_ns.class_('BleAdvSentTrigger')
+BleAdvGenCmdConstRef = bleadvcontroller_ns.class_('BleAdvGenCmd').operator("ref").operator("const")
+BleAdvEncCmdConstRef = bleadvcontroller_ns.class_('BleAdvEncCmd').operator("ref").operator("const")
 
 ENTITY_BASE_CONFIG_SCHEMA = cv.Schema(
     {
@@ -58,6 +65,9 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_REVERSED, default=False): cv.boolean,
         cv.Optional(CONF_BLE_ADV_SHOW_CONFIG): deprecate_show_config,
         cv.Optional(CONF_BLE_ADV_CANCEL_TIMER, default=True): cv.boolean,
+        cv.Optional(CONF_BLE_ADV_ON_EMITTED): validate_automation({
+            cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(BleAdvSentrigger),
+        }),
     }),
     validate_ble_adv_device,
 )
@@ -78,6 +88,9 @@ async def to_code(config):
     cg.add(var.set_seq_duration(config[CONF_BLE_ADV_SEQ_DURATION]))
     cg.add(var.set_reversed(config[CONF_REVERSED]))
     cg.add(var.set_cancel_timer_on_any_change(config[CONF_BLE_ADV_CANCEL_TIMER]))
+    for conf in config.get(CONF_BLE_ADV_ON_EMITTED, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await build_automation(trigger, [(BleAdvGenCmdConstRef, "g"), (BleAdvEncCmdConstRef, "e")], conf)
 
 ###############
 ##  ACTIONS  ##
