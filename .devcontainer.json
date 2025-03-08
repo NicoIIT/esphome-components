@@ -1,0 +1,43 @@
+{
+    "name": "NicoIIT/esphome-components",
+    "image": "ghrc.io/esphome/esphome",
+    //"postCreateCommand": "python3 -m pip install --requirement requirements.txt",
+    "runArgs": [
+      "-e ESPHOME_DASHBOARD_USE_PING=1",
+      "-e PLATFORMIO_CORE_DIR=.pio",
+      "-e PLATFORMIO_GLOBALLIB_DIR=.piolibs",
+      "-e PIP_CACHE_DIR=.pip_cache",
+      "--device=/dev/ttyUSB0",
+      "--device=/dev/ttyACM0",
+      "--group-add=20"
+    ],  
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "charliermarsh.ruff",
+                "github.vscode-pull-request-github",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ryanluker.vscode-coverage-gutters"
+            ],
+            "settings": {
+                "files.eol": "\n",
+                "editor.tabSize": 4,
+                "editor.formatOnPaste": true,
+                "editor.formatOnSave": true,
+                "editor.formatOnType": false,
+                "files.trimTrailingWhitespace": true,
+                "python.analysis.typeCheckingMode": "basic",
+                "python.analysis.autoImportCompletions": true,
+                "python.analysis.extraPaths": [
+                    "/home/vscode/.local/lib/python3.13/site-packages"
+                ],
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "[python]": {
+                    "editor.defaultFormatter": "charliermarsh.ruff"
+                }
+            }
+        }
+    },
+    "remoteUser": "vscode"
+}
