@@ -1,12 +1,13 @@
 {
     "name": "NicoIIT/esphome-components",
     "image": "ghrc.io/esphome/esphome",
-    //"postCreateCommand": "python3 -m pip install --requirement requirements.txt",
+    "containerEnv": {
+        "ESPHOME_DASHBOARD_USE_PING": "1",
+        "PLATFORMIO_CORE_DIR": ".pio",
+        "PLATFORMIO_GLOBALLIB_DIR": ".piolibs",
+        "PIP_CACHE_DIR": ".pip_cache"
+    },
     "runArgs": [
-      "-e ESPHOME_DASHBOARD_USE_PING=1",
-      "-e PLATFORMIO_CORE_DIR=.pio",
-      "-e PLATFORMIO_GLOBALLIB_DIR=.piolibs",
-      "-e PIP_CACHE_DIR=.pip_cache",
       "--device=/dev/ttyUSB0",
       "--device=/dev/ttyACM0",
       "--group-add=20"
