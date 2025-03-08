@@ -1,0 +1,26 @@
+logger:
+  level: INFO
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+esphome:
+  name: esp32-idf
+
+ble_adv_handler:
+
+ble_adv_controller:
+  - name: test
+    encoding: fanlamp_pro
+
+ble_adv_remote:
+  - name: test
+    encoding: fanlamp_pro
+
+light:
+
+fan:
+
+sensor:
