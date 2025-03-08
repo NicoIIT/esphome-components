@@ -9,7 +9,7 @@
     },
     "runArgs": [
       //"--device=/dev/ttyUSB0",
-      "--device=/dev/ttyACM0",
+      //"--device=/dev/ttyACM0",
       "--group-add=20"
     ],  
     "customizations": {
