@@ -1,6 +1,6 @@
 {
     "name": "NicoIIT/esphome-components",
-    "image": "ghrc.io/esphome/esphome",
+    "image": "ghcr.io/esphome/esphome",
     "containerEnv": {
         "ESPHOME_DASHBOARD_USE_PING": "1",
         "PLATFORMIO_CORE_DIR": ".pio",
@@ -8,7 +8,7 @@
         "PIP_CACHE_DIR": ".pip_cache"
     },
     "runArgs": [
-      "--device=/dev/ttyUSB0",
+      //"--device=/dev/ttyUSB0",
       "--device=/dev/ttyACM0",
       "--group-add=20"
     ],  
