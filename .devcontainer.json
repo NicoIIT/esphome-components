@@ -7,11 +7,6 @@
         "PLATFORMIO_GLOBALLIB_DIR": ".piolibs",
         "PIP_CACHE_DIR": ".pip_cache"
     },
-    "runArgs": [
-      //"--device=/dev/ttyUSB0",
-      //"--device=/dev/ttyACM0",
-      "--group-add=20"
-    ],  
     "customizations": {
         "vscode": {
             "extensions": [
