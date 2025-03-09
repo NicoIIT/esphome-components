@@ -1,0 +1,13 @@
+logger:
+  level: DEBUG
+
+esp32:
+  board: ${esp32board}
+  framework:
+    type: ${framework}
+
+esphome:
+  name: ${build_name}
+
+external_components:
+  - source: ../components

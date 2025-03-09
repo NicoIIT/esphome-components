@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+CONF_FILE=${1:-config/c3-idf.yaml}
+
+set -x
+
+# variable extraction
+conf_dir=$(dirname $(readlink -f ${CONF_FILE}))
+conf_name=$(basename ${CONF_FILE})
+work_dir=$(dirname $(dirname $(readlink -f ${0})))
+vscode_folder=${work_dir}/.vscode
+
+# generating config for C++
+esphome compile --only-generate ${CONF_FILE}
+build_path=$(grep -Po '(?<="build_path": ")[^"]+' ${conf_dir}/.esphome/storage/${conf_name}.json)
+pio init --ide=vscode -d ${build_path}
+rm -f ${vscode_folder}/c_cpp_properties.json
+cp ${build_path}/.vscode/c_cpp_properties.json ${vscode_folder}/

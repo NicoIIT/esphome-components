@@ -1,0 +1,8 @@
+substitutions:
+  esp32board: "esp32-c3-devkitm-1"
+  framework: "esp-idf"
+  build_name: "c3-idf"
+
+<<: !include base.yaml
+
+ble_adv_handler:
