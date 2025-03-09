@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-CONF_FILE=${1:-config/c3-idf.yaml}
+CONF_FILE=${1:-base_config/c3-idf.yaml}
 
 set -x
 
@@ -15,4 +15,5 @@ esphome compile --only-generate ${CONF_FILE}
 build_path=$(grep -Po '(?<="build_path": ")[^"]+' ${conf_dir}/.esphome/storage/${conf_name}.json)
 pio init --ide=vscode -d ${build_path}
 rm -f ${vscode_folder}/c_cpp_properties.json
+mkdir -p ${vscode_folder}
 cp ${build_path}/.vscode/c_cpp_properties.json ${vscode_folder}/
