@@ -1,10 +1,11 @@
 import esphome.config_validation as cv
 
+
 def INVALID_CUSTOM(cont_id, name, args):
-  args += [0] * (5 - len(args))
-  return f"""
+    args += [0] * (5 - len(args))
+    return f"""
 ble_adv_controller button is DEPRECATED, please perform migration to standard template button and ble_adv_controller 'custom_cmd' Action:
-  - Migration for Zhijia / FanLamp V1: 
+  - Migration for Zhijia / FanLamp V1:
     From:
     - platform: ble_adv_controller
       ble_adv_controller_id: {cont_id}
@@ -42,8 +43,9 @@ ble_adv_controller button is DEPRECATED, please perform migration to standard te
 #
 """
 
+
 def INVALID_COMMAND(cmd, cont_id, name):
-  return f"""
+    return f"""
 ble_adv_controller button is DEPRECATED, please perform migration to standard template button and ble_adv_controller '{cmd}' Action:
 From:
 
@@ -65,21 +67,32 @@ button:
 #
 """
 
+
 def validate_config(config):
     cmd = config["cmd"]
-    if cmd == "custom" :
-        raise cv.Invalid(INVALID_CUSTOM(config["ble_adv_controller_id"], config["name"], config["args"]))
+    if cmd == "custom":
+        raise cv.Invalid(
+            INVALID_CUSTOM(
+                config["ble_adv_controller_id"], config["name"], config["args"]
+            )
+        )
     elif cmd in ["pair", "unpair"]:
-        raise cv.Invalid(INVALID_COMMAND(cmd, config["ble_adv_controller_id"], config["name"]))
+        raise cv.Invalid(
+            INVALID_COMMAND(cmd, config["ble_adv_controller_id"], config["name"])
+        )
     else:
-        raise cv.Invalid("ble_adv_controller button is DEPRECATED, please use standard 'template' button and ble_adv_controller Actions.")
+        raise cv.Invalid(
+            "ble_adv_controller button is DEPRECATED, please use standard 'template' button and ble_adv_controller Actions."
+        )
     return config
 
-CONFIG_SCHEMA = cv.All({ 
-    cv.Optional("ble_adv_controller_id", default=""): cv.string,
-    cv.Optional("name", default="My Button Name"): cv.string,
-    cv.Optional("cmd", default=""): cv.string,
-    cv.Optional("args", default=[]): cv.ensure_list(cv.uint8_t),
+
+CONFIG_SCHEMA = cv.All(
+    {
+        cv.Optional("ble_adv_controller_id", default=""): cv.string,
+        cv.Optional("name", default="My Button Name"): cv.string,
+        cv.Optional("cmd", default=""): cv.string,
+        cv.Optional("args", default=[]): cv.ensure_list(cv.uint8_t),
     },
     validate_config,
-    )
+)

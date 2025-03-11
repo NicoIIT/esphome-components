@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-# -*- coding: utf-8 -*-
 
 """Override ESPHome CLI tool located in /usr/local/bin/esphome.
 
@@ -9,16 +8,19 @@ Fetaure 2: Share the compiled software in between configurations by creating sha
 Feature 3: use the platformio idedata computed while compiling to feed the '.vscode/c_cpp_properties.json' to use C++ intellisense
 """
 
+import json
 import os
 import sys
-import json
-import hashlib
-
-import esphome.__main__ as main_esphome
 from typing import Any
 
+from esphome import platformio_api, yaml_util  # , writer
+
+# import hashlib
+# import shutil
+import esphome.__main__ as main_esphome
 from esphome.core import CORE, TimePeriod
-from esphome import platformio_api, yaml_util, writer
+
+# from esphome.helpers import copy_file_if_changed
 
 
 def get_wsk_folder(folder_name: str):
@@ -52,22 +54,32 @@ yaml_util.load_yaml = load_yaml_override
 #############################################
 ## Override cpp write (build path)
 #############################################
-def write_cpp_override(conf):
-    main_esphome.generate_cpp_contents(conf)
-    main_esphome._LOGGER.info("Override Feature 2: Cache builds with same parameters.")
-    # maybe add framework params? not sure as already in build_args
-    params = [*CORE.build_flags]
-    base_conf = hashlib.sha256("".join(sorted(params)).encode("utf-8")).hexdigest()
-    CORE.build_path = get_wsk_folder(f".cache/builds/{base_conf}")
-    return main_esphome.write_cpp_file()
-
-
-def update_storage_json_override() -> None:
-    pass
-
-
-main_esphome.write_cpp = write_cpp_override
-writer.update_storage_json = update_storage_json_override
+# Feature 2 deactivated: various impact on builds and not improving global footprint
+#  def write_cpp_override(conf):
+#     main_esphome.generate_cpp_contents(conf)
+#     main_esphome._LOGGER.info("Override Feature 2: Cache builds with same parameters.")
+#     # maybe add framework params? not sure as already in build_args
+#     params = [*CORE.build_flags]
+#     base_conf = hashlib.sha256("".join(sorted(params)).encode("utf-8")).hexdigest()
+#     build_folder = get_wsk_folder(f".cache/builds/{base_conf}")
+#     # move files potentially built in previous build path
+#     src_src = os.path.join(str(CORE.build_path), "src")
+#     dst_src = os.path.join(build_folder, "src")
+#     if os.path.exists(src_src):
+#         print("src exists")
+#         for f in sorted(os.listdir(src_src)):
+#             file = os.path.join(src_src, f)
+#             if os.path.isfile(file):
+#                 copy_file_if_changed(file, os.path.join(dst_src, f))
+#     CORE.build_path = build_folder
+#     CORE.name = "PlatformIO"
+#     return main_esphome.write_cpp_file()
+#
+# def update_storage_json_override() -> None:
+#     pass
+#
+# main_esphome.write_cpp = write_cpp_override
+# writer.update_storage_json = update_storage_json_override
 
 
 #############################################

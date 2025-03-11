@@ -1,14 +1,14 @@
 #pragma once
 
 #include "esphome/core/automation.h"
-#include "esphome/components/ble_adv_controller/fan/ble_adv_fan.h"
+#include "ble_adv_fan.h"
 
 namespace esphome {
 namespace ble_adv_controller {
 
 template<typename... Ts> class FanPublishStateAction : public Action<Ts...> {
-public:
-  explicit FanPublishStateAction(BleAdvFan* fan): fan_(fan) {}
+ public:
+  explicit FanPublishStateAction(BleAdvFan *fan) : fan_(fan) {}
   TEMPLATABLE_VALUE(bool, state)
   TEMPLATABLE_VALUE(bool, oscillating)
   TEMPLATABLE_VALUE(int, speed)
@@ -30,9 +30,9 @@ public:
     this->fan_->publish_state();
   }
 
-protected:
+ protected:
   BleAdvFan *fan_;
 };
 
-}
-}
+}  // namespace ble_adv_controller
+}  // namespace esphome

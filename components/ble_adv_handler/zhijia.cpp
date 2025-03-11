@@ -4,56 +4,59 @@
 namespace esphome {
 namespace ble_adv_handler {
 
-std::string ZhijiaEncoder::to_str(const BleAdvEncCmd & enc_cmd) const {
+std::string ZhijiaEncoder::to_str(const BleAdvEncCmd &enc_cmd) const {
   char ret[100];
-  size_t ind = std::sprintf(ret, "0x%02X - args[%d,%d,%d]", enc_cmd.cmd, enc_cmd.args[0], enc_cmd.args[1], enc_cmd.args[2]);
+  size_t ind =
+      std::sprintf(ret, "0x%02X - args[%d,%d,%d]", enc_cmd.cmd, enc_cmd.args[0], enc_cmd.args[1], enc_cmd.args[2]);
   return ret;
 }
 
-uint16_t ZhijiaEncoder::crc16(uint8_t* buf, size_t len, uint16_t seed) const {
+uint16_t ZhijiaEncoder::crc16(uint8_t *buf, size_t len, uint16_t seed) const {
   return esphome::crc16(buf, len, seed, 0x8408, true, true);
 }
 
 // {0xAB, 0xCD, 0xEF} => 0xABCDEF
-uint32_t ZhijiaEncoder::uuid_to_id(uint8_t * uuid, size_t len) const {
+uint32_t ZhijiaEncoder::uuid_to_id(uint8_t *uuid, size_t len) const {
   uint32_t id = 0;
   for (size_t i = 0; i < len; ++i) {
-    id |= uuid[len - i - 1] << (8*i);
+    id |= uuid[len - i - 1] << (8 * i);
   }
   return id;
 }
 
 // 0xABCDEF => {0xAB, 0xCD, 0xEF}
-void ZhijiaEncoder::id_to_uuid(uint8_t * uuid, uint32_t id, size_t len) const {
+void ZhijiaEncoder::id_to_uuid(uint8_t *uuid, uint32_t id, size_t len) const {
   for (size_t i = 0; i < len; ++i) {
-    uuid[len - i - 1] = (id >> (8*i)) & 0xFF;
+    uuid[len - i - 1] = (id >> (8 * i)) & 0xFF;
   }
 }
 
-void ZhijiaEncoder::xor_all(uint8_t* buf, size_t len, uint16_t pivot) const {
+void ZhijiaEncoder::xor_all(uint8_t *buf, size_t len, uint16_t pivot) const {
   for (size_t i = 0; i < len; ++i) {
     buf[i] ^= pivot;
   }
 }
 
-ZhijiaEncoderV0::ZhijiaEncoderV0(const std::string & encoding, const std::string & variant, std::vector< uint8_t > && mac): 
-  ZhijiaEncoder(encoding, variant, mac) {
+ZhijiaEncoderV0::ZhijiaEncoderV0(const std::string &encoding, const std::string &variant, std::vector<uint8_t> &&mac)
+    : ZhijiaEncoder(encoding, variant, mac) {
   this->len_ = sizeof(data_map_t);
 }
 
-bool ZhijiaEncoderV0::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+bool ZhijiaEncoderV0::decode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
   this->whiten(buf, this->len_, 0x37);
   this->whiten(buf, this->len_, 0x7F);
   this->log_buffer(buf, this->len_, "Decoded");
 
-  data_map_t * data = (data_map_t *) buf;
+  data_map_t *data = (data_map_t *) buf;
   uint16_t crc16 = this->crc16(buf, ADDR_LEN + TXDATA_LEN);
-  if (!this->check_eq(crc16, data->crc16, "crc16")) return false;
+  if (!this->check_eq(crc16, data->crc16, "crc16"))
+    return false;
 
   uint8_t addr[ADDR_LEN];
   this->reverse_all(buf, ADDR_LEN);
   std::reverse_copy(data->addr, data->addr + ADDR_LEN, addr);
-  if (!this->check_eq_buf(this->mac_.data(), addr, ADDR_LEN, "Mac")) return false;
+  if (!this->check_eq_buf(this->mac_.data(), addr, ADDR_LEN, "Mac"))
+    return false;
 
   cont.tx_count_ = data->txdata[0] ^ data->txdata[6];
   enc_cmd.args[0] = cont.tx_count_ ^ data->txdata[7];
@@ -70,11 +73,11 @@ bool ZhijiaEncoderV0::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   return true;
 }
 
-void ZhijiaEncoderV0::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+void ZhijiaEncoderV0::encode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
   unsigned char uuid[UUID_LEN] = {0};
   this->id_to_uuid(uuid, cont.id_, UUID_LEN);
 
-  data_map_t * data = (data_map_t *) buf;
+  data_map_t *data = (data_map_t *) buf;
   std::reverse_copy(this->mac_.begin(), this->mac_.end(), data->addr);
   this->reverse_all(data->addr, ADDR_LEN);
 
@@ -94,12 +97,13 @@ void ZhijiaEncoderV0::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   this->whiten(buf, this->len_, 0x37);
 }
 
-ZhijiaEncoderV1::ZhijiaEncoderV1(const std::string & encoding, const std::string & variant, std::vector< uint8_t > && mac, uint8_t uid_start): 
-  ZhijiaEncoder(encoding, variant, mac), uid_start_(uid_start) {
+ZhijiaEncoderV1::ZhijiaEncoderV1(const std::string &encoding, const std::string &variant, std::vector<uint8_t> &&mac,
+                                 uint8_t uid_start)
+    : ZhijiaEncoder(encoding, variant, mac), uid_start_(uid_start) {
   this->len_ = sizeof(data_map_t);
 }
 
-bool ZhijiaEncoderV1::from_txdata(uint8_t* txdata, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+bool ZhijiaEncoderV1::from_txdata(uint8_t *txdata, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
   cont.tx_count_ = txdata[4];
   cont.index_ = txdata[6];
   enc_cmd.cmd = txdata[9];
@@ -119,7 +123,7 @@ bool ZhijiaEncoderV1::from_txdata(uint8_t* txdata, BleAdvEncCmd & enc_cmd, Contr
   return this->check_eq_buf(this->mac_.data() + this->uid_start_, addr, ADDR_LEN, "Mac");
 }
 
-void ZhijiaEncoderV1::to_txdata(uint8_t* txdata, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+void ZhijiaEncoderV1::to_txdata(uint8_t *txdata, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
   unsigned char uuid[UUID_LEN] = {0};
   this->id_to_uuid(uuid, cont.id_, UUID_LEN);
 
@@ -127,7 +131,7 @@ void ZhijiaEncoderV1::to_txdata(uint8_t* txdata, BleAdvEncCmd & enc_cmd, Control
   std::copy(this->mac_.begin() + this->uid_start_, this->mac_.begin() + this->uid_start_ + ADDR_LEN, addr);
 
   uint8_t key = enc_cmd.cmd ^ enc_cmd.args[0] ^ enc_cmd.args[1] ^ enc_cmd.args[2];
-  key ^=  uuid[0] ^ uuid[1] ^ uuid[2] ^ cont.tx_count_ ^ cont.index_ ^ addr[0] ^ addr[1] ^ addr[2];
+  key ^= uuid[0] ^ uuid[1] ^ uuid[2] ^ cont.tx_count_ ^ cont.index_ ^ addr[0] ^ addr[1] ^ addr[2];
 
   txdata[0] = enc_cmd.args[0];
   txdata[1] = key;
@@ -147,43 +151,52 @@ void ZhijiaEncoderV1::to_txdata(uint8_t* txdata, BleAdvEncCmd & enc_cmd, Control
   txdata[15] = uuid[2] ^ enc_cmd.cmd;
 }
 
-bool ZhijiaEncoderV1::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+bool ZhijiaEncoderV1::decode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
   this->whiten(buf, this->len_, 0x37);
 
-  data_map_t * data = (data_map_t *) buf;
+  data_map_t *data = (data_map_t *) buf;
   uint16_t crc16 = this->crc16(buf, this->len_ - 2);
-  if (!this->check_eq(crc16, data->crc16, "crc16")) return false;
+  if (!this->check_eq(crc16, data->crc16, "crc16"))
+    return false;
 
   uint8_t mac[MAC_LEN];
   this->reverse_all(data->mac, MAC_LEN);
   std::reverse_copy(data->mac, data->mac + MAC_LEN, mac);
-  if (!this->check_eq_buf(this->mac_.data(), mac, MAC_LEN, "Mac")) return false;
+  if (!this->check_eq_buf(this->mac_.data(), mac, MAC_LEN, "Mac"))
+    return false;
 
   this->xor_all(data->txdata, TXDATA_LEN, data->pivot);
   this->log_buffer(buf, this->len_, "Decoded");
 
-  if (!this->from_txdata(data->txdata, enc_cmd, cont)) return false;
+  if (!this->from_txdata(data->txdata, enc_cmd, cont))
+    return false;
 
-  if (!this->check_eq(data->txdata[7], data->txdata[14], "Dupe 7/14")) return false;
-  if (!this->check_eq(0x00, data->txdata[8], "8 as 0x00")) return false;
-  if (!this->check_eq(0x00, data->txdata[11], "11 as 0x00")) return false;
+  if (!this->check_eq(data->txdata[7], data->txdata[14], "Dupe 7/14"))
+    return false;
+  if (!this->check_eq(0x00, data->txdata[8], "8 as 0x00"))
+    return false;
+  if (!this->check_eq(0x00, data->txdata[11], "11 as 0x00"))
+    return false;
 
-  uint8_t re_pivot = data->txdata[2] ^ data->txdata[4] ^ data->txdata[9] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15];
+  uint8_t re_pivot =
+      data->txdata[2] ^ data->txdata[4] ^ data->txdata[9] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15];
   re_pivot ^= ((re_pivot & 1) - 1);
-  if (!this->check_eq(re_pivot, data->pivot, "Pivot")) return false;
+  if (!this->check_eq(re_pivot, data->pivot, "Pivot"))
+    return false;
 
   return true;
 }
 
-void ZhijiaEncoderV1::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
-  data_map_t * data = (data_map_t *) buf;
+void ZhijiaEncoderV1::encode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
+  data_map_t *data = (data_map_t *) buf;
   std::reverse_copy(this->mac_.begin(), this->mac_.end(), data->mac);
   this->reverse_all(data->mac, MAC_LEN);
 
   this->to_txdata(data->txdata, enc_cmd, cont);
   data->txdata[14] = data->txdata[7];
 
-  data->pivot = data->txdata[2] ^ data->txdata[4] ^ data->txdata[9] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15];
+  data->pivot =
+      data->txdata[2] ^ data->txdata[4] ^ data->txdata[9] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15];
   data->pivot ^= (data->pivot & 1) - 1;
 
   this->log_buffer(buf, this->len_, "Before encoding");
@@ -192,43 +205,50 @@ void ZhijiaEncoderV1::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   this->whiten(buf, this->len_, 0x37);
 }
 
-ZhijiaEncoderV2::ZhijiaEncoderV2(const std::string & encoding, const std::string & variant, std::vector< uint8_t > && mac): 
-  ZhijiaEncoderV1(encoding, variant, std::move(mac)) {
+ZhijiaEncoderV2::ZhijiaEncoderV2(const std::string &encoding, const std::string &variant, std::vector<uint8_t> &&mac)
+    : ZhijiaEncoderV1(encoding, variant, std::move(mac)) {
   this->len_ = sizeof(data_map_t);
 }
 
-bool ZhijiaEncoderV2::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
+bool ZhijiaEncoderV2::decode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
   this->whiten(buf, this->len_, 0x6F);
   this->whiten(buf, this->len_ - 2, 0xD3);
 
-  data_map_t * data = (data_map_t *) buf;
+  data_map_t *data = (data_map_t *) buf;
   this->xor_all(data->txdata, TXDATA_LEN, data->pivot);
   this->log_buffer(buf, this->len_, "Decoded");
 
-  if (!this->from_txdata(data->txdata, enc_cmd, cont)) return false;
+  if (!this->from_txdata(data->txdata, enc_cmd, cont))
+    return false;
 
-  //uint8_t key = addr[0] ^ addr[1] ^ addr[2] ^ cont.index_ ^ cont.tx_count_ ^ enc_cmd.args[0] ^ enc_cmd.args[1] ^ enc_cmd.args[2] ^ uuid[0] ^ uuid[1] ^ uuid[2];
-  //ENSURE_EQ(key, data->txdata[1], "Decoded KO (Key)");
-  
+  // uint8_t key = addr[0] ^ addr[1] ^ addr[2] ^ cont.index_ ^ cont.tx_count_ ^ enc_cmd.args[0] ^ enc_cmd.args[1] ^
+  // enc_cmd.args[2] ^ uuid[0] ^ uuid[1] ^ uuid[2]; ENSURE_EQ(key, data->txdata[1], "Decoded KO (Key)");
+
   uint8_t re_pivot = data->txdata[3] ^ data->txdata[7] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15];
   re_pivot = ((re_pivot & 1) - 1) ^ re_pivot;
-  if (!this->check_eq(re_pivot, data->pivot, "Pivot")) return false;
+  if (!this->check_eq(re_pivot, data->pivot, "Pivot"))
+    return false;
 
-  if (!this->check_eq(data->txdata[2] ^ data->txdata[3] ^ data->txdata[4] ^ data->txdata[7], data->txdata[8], "txdata 8")) return false;
-  if (!this->check_eq(0x00, data->txdata[11], "txdata 11")) return false;
-  if (!this->check_eq(data->txdata[2] ^ data->txdata[3] ^ data->txdata[4] ^ data->txdata[9], data->txdata[14], "txdata 14")) return false;
+  if (!this->check_eq(data->txdata[2] ^ data->txdata[3] ^ data->txdata[4] ^ data->txdata[7], data->txdata[8],
+                      "txdata 8"))
+    return false;
+  if (!this->check_eq(0x00, data->txdata[11], "txdata 11"))
+    return false;
+  if (!this->check_eq(data->txdata[2] ^ data->txdata[3] ^ data->txdata[4] ^ data->txdata[9], data->txdata[14],
+                      "txdata 14"))
+    return false;
 
   return true;
 }
 
-void ZhijiaEncoderV2::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
-  data_map_t * data = (data_map_t *) buf;
+void ZhijiaEncoderV2::encode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
+  data_map_t *data = (data_map_t *) buf;
   this->to_txdata(data->txdata, enc_cmd, cont);
   data->txdata[1] ^= data->txdata[9];
   data->txdata[8] = data->txdata[2] ^ data->txdata[3] ^ data->txdata[4] ^ data->txdata[7];
   data->txdata[14] = data->txdata[2] ^ data->txdata[3] ^ data->txdata[4] ^ data->txdata[9];
 
-  data->pivot = data->txdata[3] ^ data->txdata[7] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15] ;
+  data->pivot = data->txdata[3] ^ data->txdata[7] ^ data->txdata[12] ^ data->txdata[13] ^ data->txdata[15];
   data->pivot = ((data->pivot & 1) - 1) ^ data->pivot;
 
   this->log_buffer(buf, this->len_, "Before encoding");
@@ -237,13 +257,14 @@ void ZhijiaEncoderV2::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerPar
   this->whiten(buf, this->len_, 0x6F);
 }
 
-ZhijiaEncoderRemote::ZhijiaEncoderRemote(const std::string & encoding, const std::string & variant, std::vector< uint8_t > && mac): 
-  ZhijiaEncoderV1(encoding, variant, std::move(mac)) {
+ZhijiaEncoderRemote::ZhijiaEncoderRemote(const std::string &encoding, const std::string &variant,
+                                         std::vector<uint8_t> &&mac)
+    : ZhijiaEncoderV1(encoding, variant, std::move(mac)) {
   this->len_ = sizeof(data_map_t);
 }
 
-bool ZhijiaEncoderRemote::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
-  data_map_t * data = (data_map_t *) buf;
+bool ZhijiaEncoderRemote::decode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
+  data_map_t *data = (data_map_t *) buf;
 
   // workaround for pivot: at pos 5 is arg2 which is always 0, so effective pivot has this value
   uint8_t eff_pivot = data->txdata[5];
@@ -253,22 +274,26 @@ bool ZhijiaEncoderRemote::decode(uint8_t* buf, BleAdvEncCmd & enc_cmd, Controlle
   std::string decoded = esphome::format_hex_pretty(buf, this->len_);
   ESP_LOGD(this->id_.c_str(), "Decoded  - %s", decoded.c_str());
 
-  if (!this->from_txdata(data->txdata, enc_cmd, cont)) return false;
+  if (!this->from_txdata(data->txdata, enc_cmd, cont))
+    return false;
 
-  if (!this->check_eq(0x01, data->txdata[8], "txdata 8")) return false;
-  if (!this->check_eq(0x02, data->txdata[11], "txdata 11")) return false;
-  if (!this->check_eq(data->txdata[2], data->txdata[14], "txdata 14")) return false;
+  if (!this->check_eq(0x01, data->txdata[8], "txdata 8"))
+    return false;
+  if (!this->check_eq(0x02, data->txdata[11], "txdata 11"))
+    return false;
+  if (!this->check_eq(data->txdata[2], data->txdata[14], "txdata 14"))
+    return false;
 
   // Attempt to have more info so that we could deduce more effisciently the encoding
-  if ( (data->pivot ^ 0x06) != eff_pivot ) {
+  if ((data->pivot ^ 0x06) != eff_pivot) {
     ESP_LOGE(this->id_.c_str(), "Pivot different than expected, please open an issue to component owner.");
   }
 
   return true;
 }
 
-void ZhijiaEncoderRemote::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, ControllerParam_t & cont) const {
-  data_map_t * data = (data_map_t *) buf;
+void ZhijiaEncoderRemote::encode(uint8_t *buf, BleAdvEncCmd &enc_cmd, ControllerParam_t &cont) const {
+  data_map_t *data = (data_map_t *) buf;
 
   this->to_txdata(data->txdata, enc_cmd, cont);
   data->txdata[1] ^= 0x04;
@@ -283,5 +308,5 @@ void ZhijiaEncoderRemote::encode(uint8_t* buf, BleAdvEncCmd & enc_cmd, Controlle
   this->xor_all(data->txdata, TXDATA_LEN, data->pivot ^ 0x06);
 }
 
-} // namespace ble_adv_handler
-} // namespace esphome
+}  // namespace ble_adv_handler
+}  // namespace esphome

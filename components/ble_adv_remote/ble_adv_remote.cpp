@@ -20,14 +20,15 @@ void BleAdvRemote::dump_config() {
 
 void BleAdvRemote::unpair() {
   // The remote is not able to directly use its BleAdvHandler parent to send ADV message as it has no queue to do so
-  // So the easiest way to send a command is to generate it and send it as raw to one of the controller it controls / publishes
+  // So the easiest way to send a command is to generate it and send it as raw to one of the controller it controls /
+  // publishes
   if (this->encoders_.empty()) {
     ESP_LOGW(TAG, "Unable to send UNPAIR as no encoder available.");
     return;
   }
 
-  const auto & encoder = this->encoders_.front();
-  std::vector< ble_adv_handler::BleAdvEncCmd > enc_cmds;
+  const auto &encoder = this->encoders_.front();
+  std::vector<ble_adv_handler::BleAdvEncCmd> enc_cmds;
   encoder->translate_g2e(enc_cmds, BleAdvGenCmd(CommandType::UNPAIR, EntityType::CONTROLLER));
   if (enc_cmds.empty()) {
     ESP_LOGW(TAG, "Unable to send UNPAIR as feature not available for encoder.");
@@ -46,7 +47,7 @@ void BleAdvRemote::unpair() {
   }
 }
 
-void BleAdvRemote::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
+void BleAdvRemote::publish(const BleAdvGenCmd &gen_cmd, bool apply_command) {
   if (this->toggle_) {
     BleAdvGenCmd gen_cmd_tog = gen_cmd;
     if (gen_cmd.cmd == CommandType::ON || gen_cmd.cmd == CommandType::OFF) {
@@ -65,8 +66,9 @@ void BleAdvRemote::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
   }
   if ((gen_cmd.cmd == CommandType::LIGHT_CWW_COLD_WARM) && (gen_cmd.param == 2) && !this->cycle_.empty()) {
     // Internal Cycle: change index and convert to standard Cold / Warm
-    if (++this->cycle_index_ >= this->cycle_.size()) this->cycle_index_ = 0;
-    auto & values =  this->cycle_[this->cycle_index_];
+    if (++this->cycle_index_ >= this->cycle_.size())
+      this->cycle_index_ = 0;
+    auto &values = this->cycle_[this->cycle_index_];
     BleAdvGenCmd new_cmd = gen_cmd;
     new_cmd.param = 0;
     new_cmd.args[0] = values[0];
@@ -74,28 +76,29 @@ void BleAdvRemote::publish(const BleAdvGenCmd & gen_cmd, bool apply_command) {
     this->publish_eff(new_cmd, apply_command);
     return;
   }
-  if ((gen_cmd.cmd == CommandType::LIGHT_CWW_DIM || gen_cmd.cmd == CommandType::LIGHT_CWW_WARM) && (gen_cmd.param != 0)) {
+  if ((gen_cmd.cmd == CommandType::LIGHT_CWW_DIM || gen_cmd.cmd == CommandType::LIGHT_CWW_WARM) &&
+      (gen_cmd.param != 0)) {
     BleAdvGenCmd new_cmd = gen_cmd;
-    new_cmd.args[0] = 1.0f / (float)this->level_count_;
+    new_cmd.args[0] = 1.0f / (float) this->level_count_;
     this->publish_eff(new_cmd, apply_command);
     return;
   }
   this->publish_eff(gen_cmd, apply_command);
 }
 
-void BleAdvRemote::publish_eff(const BleAdvGenCmd & gen_cmd, bool apply_command) {
-  for (auto & trigger : this->triggers_) {
+void BleAdvRemote::publish_eff(const BleAdvGenCmd &gen_cmd, bool apply_command) {
+  for (auto &trigger : this->triggers_) {
     trigger->trigger(gen_cmd);
   }
 
-  for (auto & controller : this->controlling_controllers_) {
+  for (auto &controller : this->controlling_controllers_) {
     controller->publish(gen_cmd, true);
   }
 
-  for (auto & controller : this->publishing_controllers_) {
+  for (auto &controller : this->publishing_controllers_) {
     controller->publish(gen_cmd, false);
   }
 }
 
-} // namespace ble_adv_remote
-} // namespace esphome
+}  // namespace ble_adv_remote
+}  // namespace esphome

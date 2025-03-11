@@ -1,49 +1,50 @@
+from esphome.automation import maybe_simple_id
 import esphome.codegen as cg
-import esphome.config_validation as cv
 from esphome.components import fan
-from esphome.automation import (
-    maybe_simple_id,
-)
-
+import esphome.config_validation as cv
 from esphome.const import (
-    CONF_ID,
-    CONF_RESTORE_MODE,
-    CONF_OSCILLATING,
-    CONF_SPEED,
     CONF_DIRECTION,
+    CONF_ID,
+    CONF_OSCILLATING,
+    CONF_RESTORE_MODE,
+    CONF_SPEED,
     CONF_STATE,
 )
 
 from .. import (
-    bleadvcontroller_ns,
     ENTITY_BASE_CONFIG_SCHEMA,
-    entity_base_code_gen,
     BleAdvEntity,
+    bleadvcontroller_ns,
+    entity_base_code_gen,
     reg_controller_action,
 )
-
 from ..const import (
-    CONF_BLE_ADV_SPEED_COUNT,
     CONF_BLE_ADV_DIRECTION_SUPPORTED,
-    CONF_BLE_ADV_OSCILLATION_SUPPORTED,
     CONF_BLE_ADV_FORCED_REFRESH_ON_START,
+    CONF_BLE_ADV_OSCILLATION_SUPPORTED,
+    CONF_BLE_ADV_SPEED_COUNT,
 )
 
-BleAdvFan = bleadvcontroller_ns.class_('BleAdvFan', fan.Fan, BleAdvEntity)
+BleAdvFan = bleadvcontroller_ns.class_("BleAdvFan", fan.Fan, BleAdvEntity)
 
 CONFIG_SCHEMA = cv.All(
     fan.FAN_SCHEMA.extend(
         {
             cv.GenerateID(): cv.declare_id(BleAdvFan),
-            cv.Optional(CONF_BLE_ADV_SPEED_COUNT, default=6): cv.one_of(0,3,6),
+            cv.Optional(CONF_BLE_ADV_SPEED_COUNT, default=6): cv.one_of(0, 3, 6),
             cv.Optional(CONF_BLE_ADV_DIRECTION_SUPPORTED, default=True): cv.boolean,
             cv.Optional(CONF_BLE_ADV_OSCILLATION_SUPPORTED, default=False): cv.boolean,
-            cv.Optional(CONF_BLE_ADV_FORCED_REFRESH_ON_START, default=False): cv.boolean,
+            cv.Optional(
+                CONF_BLE_ADV_FORCED_REFRESH_ON_START, default=False
+            ): cv.boolean,
             # override default value for restore mode, to always restore as it was if possible
-            cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): cv.enum(fan.RESTORE_MODES, upper=True, space="_"),
+            cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): cv.enum(
+                fan.RESTORE_MODES, upper=True, space="_"
+            ),
         }
     ).extend(ENTITY_BASE_CONFIG_SCHEMA),
 )
+
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
@@ -52,7 +53,10 @@ async def to_code(config):
     cg.add(var.set_speed_count(config[CONF_BLE_ADV_SPEED_COUNT]))
     cg.add(var.set_direction_supported(config[CONF_BLE_ADV_DIRECTION_SUPPORTED]))
     cg.add(var.set_oscillation_supported(config[CONF_BLE_ADV_OSCILLATION_SUPPORTED]))
-    cg.add(var.set_forced_refresh_on_start(config[CONF_BLE_ADV_FORCED_REFRESH_ON_START]))
+    cg.add(
+        var.set_forced_refresh_on_start(config[CONF_BLE_ADV_FORCED_REFRESH_ON_START])
+    )
+
 
 ###############
 ##  ACTIONS  ##
@@ -63,11 +67,16 @@ FAN_PUBLISH_STATE_ACTION_SCHEMA = maybe_simple_id(
         cv.Optional(CONF_STATE): cv.templatable(cv.boolean),
         cv.Optional(CONF_OSCILLATING): cv.templatable(cv.boolean),
         cv.Optional(CONF_SPEED): cv.templatable(cv.int_range(1)),
-        cv.Optional(CONF_DIRECTION): cv.templatable(cv.enum(fan.FAN_DIRECTION_ENUM, upper=True)),
+        cv.Optional(CONF_DIRECTION): cv.templatable(
+            cv.enum(fan.FAN_DIRECTION_ENUM, upper=True)
+        ),
     }
 )
 
-@reg_controller_action("fan.publish_state", 'FanPublishStateAction', FAN_PUBLISH_STATE_ACTION_SCHEMA)
+
+@reg_controller_action(
+    "fan.publish_state", "FanPublishStateAction", FAN_PUBLISH_STATE_ACTION_SCHEMA
+)
 async def fan_publish_state_to_code(config, action_id, template_arg, args):
     paren = await cg.get_variable(config[CONF_ID])
     var = cg.new_Pvariable(action_id, template_arg, paren)

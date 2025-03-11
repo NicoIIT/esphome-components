@@ -7,14 +7,14 @@ namespace esphome {
 namespace ble_adv_handler {
 
 class BleAdvDecodedTrigger : public BleAdvBaseDecodedTrigger {
-public:
+ public:
   explicit BleAdvDecodedTrigger(BleAdvHandler *parent) { parent->register_decoded_trigger(this); }
 };
 
 class BleAdvRawTrigger : public BleAdvBaseRawTrigger {
-public:
+ public:
   explicit BleAdvRawTrigger(BleAdvHandler *parent) { parent->register_raw_trigger(this); }
 };
 
-}
-}
+}  // namespace ble_adv_handler
+}  // namespace esphome

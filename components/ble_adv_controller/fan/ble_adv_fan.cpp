@@ -19,7 +19,7 @@ void BleAdvFan::setup() {
   }
 }
 
-void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
+void BleAdvFan::publish(const BleAdvGenCmd &gen_cmd) {
   fan::FanCall call = this->make_call();
   if (gen_cmd.cmd == CommandType::ON) {
     call.set_state(true).perform();
@@ -32,7 +32,8 @@ void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
       call.set_state(false).perform();
     } else {
       float max_speed = (gen_cmd.args[1] == 0) ? REF_SPEED : gen_cmd.args[1];
-      uint8_t rounded_speed = (uint8_t) (((float)(gen_cmd.args[0] * this->traits_.supported_speed_count()) / max_speed) + 0.5f);
+      uint8_t rounded_speed =
+          (uint8_t) (((float) (gen_cmd.args[0] * this->traits_.supported_speed_count()) / max_speed) + 0.5f);
       call.set_speed(rounded_speed);
       call.set_state(true).perform();
     }
@@ -49,11 +50,13 @@ void BleAdvFan::publish(const BleAdvGenCmd & gen_cmd) {
     ESP_LOGD(TAG, "Change ignored as entity is OFF.");
     return;
   }
-  
+
   if (gen_cmd.cmd == CommandType::FAN_DIR) {
     call.set_direction((gen_cmd.args[0] == 0) ? fan::FanDirection::FORWARD : fan::FanDirection::REVERSE).perform();
   } else if (gen_cmd.cmd == CommandType::FAN_DIR_TOGGLE) {
-    call.set_direction((this->direction == fan::FanDirection::REVERSE) ? fan::FanDirection::FORWARD : fan::FanDirection::REVERSE).perform();
+    call.set_direction((this->direction == fan::FanDirection::REVERSE) ? fan::FanDirection::FORWARD
+                                                                       : fan::FanDirection::REVERSE)
+        .perform();
   } else if (gen_cmd.cmd == CommandType::FAN_OSC) {
     call.set_oscillating(gen_cmd.args[0] != 0).perform();
   } else if (gen_cmd.cmd == CommandType::FAN_OSC_TOGGLE) {
@@ -85,7 +88,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
       this->speed = *call.get_speed();
     }
     // Switch ON always setting with SPEED or OFF
-    ESP_LOGD(TAG, "BleAdvFan::control - Setting %s with speed %d", this->state ? "ON":"OFF", this->speed);
+    ESP_LOGD(TAG, "BleAdvFan::control - Setting %s with speed %d", this->state ? "ON" : "OFF", this->speed);
     this->command(CommandType::FAN_ONOFF_SPEED, this->state ? this->speed : 0, this->traits_.supported_speed_count());
   }
 
@@ -98,7 +101,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
 
   if (direction_refresh && this->traits_.supports_direction()) {
     bool isFwd = this->direction == fan::FanDirection::FORWARD;
-    ESP_LOGD(TAG, "BleAdvFan::control - Setting direction %s", (isFwd ? "fwd":"rev"));
+    ESP_LOGD(TAG, "BleAdvFan::control - Setting direction %s", (isFwd ? "fwd" : "rev"));
     this->command(CommandType::FAN_DIR, !isFwd);
   }
 
@@ -110,7 +113,7 @@ void BleAdvFan::control(const fan::FanCall &call) {
   }
 
   if (oscillation_refresh && this->traits_.supports_oscillation()) {
-    ESP_LOGD(TAG, "BleAdvFan::control - Setting Oscillation %s", (this->oscillating ? "ON":"OFF"));
+    ESP_LOGD(TAG, "BleAdvFan::control - Setting Oscillation %s", (this->oscillating ? "ON" : "OFF"));
     this->command(CommandType::FAN_OSC, this->oscillating);
   }
 
@@ -126,5 +129,5 @@ void BleAdvFan::control(const fan::FanCall &call) {
   this->publish_state();
 }
 
-} // namespace ble_adv_controller
-} // namespace esphome
+}  // namespace ble_adv_controller
+}  // namespace esphome
