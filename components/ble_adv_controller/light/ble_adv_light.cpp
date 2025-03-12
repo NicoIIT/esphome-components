@@ -88,14 +88,17 @@ float BleAdvLightCww::get_device_brightness(float ha_brightness) {
   return ensure_range(this->get_min_brightness() + ha_brightness * (1.f - this->get_min_brightness()));
 }
 
-float BleAdvLightCww::get_ha_color_temperature(float device_color_temperature) {
-  return ensure_range(device_color_temperature) * (this->traits_.get_max_mireds() - this->traits_.get_min_mireds()) +
+float BleAdvLightCww::get_ha_color_temperature(float device_color_temperature, bool apply_reversed) {
+  float ctf = (apply_reversed && this->get_parent()->is_reversed()) ? (1.0 - device_color_temperature)
+                                                                    : device_color_temperature;
+  return ensure_range(ctf) * (this->traits_.get_max_mireds() - this->traits_.get_min_mireds()) +
          this->traits_.get_min_mireds();
 }
 
 float BleAdvLightCww::get_device_color_temperature(float ha_color_temperature) {
-  return ensure_range((ha_color_temperature - this->traits_.get_min_mireds()) /
-                      (this->traits_.get_max_mireds() - this->traits_.get_min_mireds()));
+  float ctf = ensure_range((ha_color_temperature - this->traits_.get_min_mireds()) /
+                           (this->traits_.get_max_mireds() - this->traits_.get_min_mireds()));
+  return this->get_parent()->is_reversed() ? (1.0 - ctf) : ctf;
 }
 
 void BleAdvLightCww::publish_impl(const BleAdvGenCmd &gen_cmd) {
@@ -106,9 +109,9 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd &gen_cmd) {
     if ((gen_cmd.param == 0) || (gen_cmd.param == 3)) {
       call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[0])).perform();
     } else if (gen_cmd.param == 1) {  // Color Temp +
-      call.set_color_temperature(this->get_ha_color_temperature(this->warm_color_ + gen_cmd.args[0])).perform();
+      call.set_color_temperature(this->get_ha_color_temperature(this->warm_color_ + gen_cmd.args[0], false)).perform();
     } else if (gen_cmd.param == 2) {  // Color Temp -
-      call.set_color_temperature(this->get_ha_color_temperature(this->warm_color_ - gen_cmd.args[0])).perform();
+      call.set_color_temperature(this->get_ha_color_temperature(this->warm_color_ - gen_cmd.args[0], false)).perform();
     }
   } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_DIM) {
     if ((gen_cmd.param == 0) || (gen_cmd.param == 3)) {
@@ -120,8 +123,12 @@ void BleAdvLightCww::publish_impl(const BleAdvGenCmd &gen_cmd) {
     }
   } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_COLD_WARM) {
     // standard cold(args[0]) / warm(args[1]) update
-    call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[1] / (gen_cmd.args[0] + gen_cmd.args[1])));
-    call.set_brightness(this->get_ha_brightness(std::max(gen_cmd.args[0], gen_cmd.args[1])));
+    float brf = std::max(gen_cmd.args[0], gen_cmd.args[1]);
+    float cwf = gen_cmd.args[0] / brf;
+    float wwf = gen_cmd.args[1] / brf;
+    float ctf = (cwf < wwf) ? 0.5 + ((1.0 - cwf) / 2.0) : (wwf / 2.0);
+    call.set_color_temperature(this->get_ha_color_temperature(ctf));
+    call.set_brightness(this->get_ha_brightness(brf));
     call.perform();
   } else if (gen_cmd.cmd == CommandType::LIGHT_CWW_WARM_DIM) {
     call.set_color_temperature(this->get_ha_color_temperature(gen_cmd.args[0]));
@@ -134,7 +141,6 @@ void BleAdvLightCww::control() {
   // Compute Corrected Brigtness / Warm Color Temperature (potentially reversed) as float: 0 -> 1
   float updated_brf = this->get_device_brightness(this->current_values.get_brightness());
   float updated_ctf = this->get_device_color_temperature(this->current_values.get_color_temperature());
-  updated_ctf = this->get_parent()->is_reversed() ? 1.0 - updated_ctf : updated_ctf;
   // During transition(current / remote states are not the same), do not process change
   //    if Brigtness / Color Temperature was not modified enough
   float br_diff = abs(this->brightness_ - updated_brf) * 100;
@@ -147,17 +153,18 @@ void BleAdvLightCww::control() {
   this->brightness_ = updated_brf;
   this->warm_color_ = updated_ctf;
 
+  float cwf, wwf;
+  if (this->constant_brightness_) {
+    wwf = updated_ctf * updated_brf;
+    cwf = (1.0 - updated_ctf) * updated_brf;
+  } else {
+    wwf = updated_brf * ((updated_ctf > 0.5) ? 1.0 : updated_ctf * 2.0);
+    cwf = updated_brf * ((updated_ctf < 0.5) ? 1.0 : (1.0 - updated_ctf) * 2.0);
+  }
+
   // Several Options are prepared but only one of them will be used by the translator / encoder
   // They are mutually exclusive at translator level
   // Option 1 and 2: both info sent in one message, either (Cold% / Warm%), or (brightness% / CT%)
-  light::LightColorValues eff_values = this->current_values;
-  eff_values.set_brightness(updated_brf);
-  float cwf, wwf;
-  if (this->get_parent()->is_reversed()) {
-    eff_values.as_cwww(&wwf, &cwf, 0, this->constant_brightness_);
-  } else {
-    eff_values.as_cwww(&cwf, &wwf, 0, this->constant_brightness_);
-  }
   ESP_LOGD(TAG, "Updating Cold: %.0f%%, Warm: %.0f%%", cwf * 100, wwf * 100);
   this->command(CommandType::LIGHT_CWW_COLD_WARM, cwf, wwf);
   this->command(CommandType::LIGHT_CWW_WARM_DIM, updated_ctf, updated_brf);

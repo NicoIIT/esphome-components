@@ -38,7 +38,7 @@ class BleAdvLightCww : public BleAdvLightBase {
 
   float get_ha_brightness(float device_brightness);
   float get_device_brightness(float ha_brightness);
-  float get_ha_color_temperature(float device_color_temperature);
+  float get_ha_color_temperature(float device_color_temperature, bool apply_reversed = true);
   float get_device_color_temperature(float ha_color_temperature);
 
  protected:
