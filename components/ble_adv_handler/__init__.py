@@ -33,7 +33,6 @@ CONF_BLE_ADV_CODEC_ID = "codec_id"
 
 AUTO_LOAD = ["esp32_ble", "select", "number"]
 DEPENDENCIES = ["esp32"]
-CONFLICTS_WITH = ["esp32_ble_tracker"]
 MULTI_CONF = False
 
 bleadvhandler_ns = cg.esphome_ns.namespace("ble_adv_handler")

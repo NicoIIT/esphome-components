@@ -3,10 +3,6 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/application.h"
 
-#ifdef USE_ESP32_BLE_CLIENT
-#include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
-#endif
-
 namespace esphome {
 namespace ble_adv_handler {
 
@@ -457,6 +453,13 @@ void BleAdvHandler::setup_max_tx_power() {
 }
 
 void BleAdvHandler::loop() {
+#ifdef USE_ESP32_BLE_CLIENT
+  // using esp32_ble_tracker: let it handle scan parameters / start / stop
+  if (!this->get_parent()->is_active()) {
+    return;
+  }
+#else
+  // NOT using esp32_ble_tracker: handle scan parameters / start / stop
   // prevent any action if ble stack not ready, and stop scan if started
   if (!this->get_parent()->is_active()) {
     if (this->scan_started_) {
@@ -483,6 +486,7 @@ void BleAdvHandler::loop() {
       }
     }
   }
+#endif
 
   // Cleanup expired packets
   this->processed_packets_.remove_if([&](BleAdvParam &p) { return p.duration_ < millis(); });

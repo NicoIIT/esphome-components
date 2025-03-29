@@ -1,5 +1,11 @@
 # MAJOR CHANGE LOG
 
+## 29 March 2025
+* Correct compatibility issue with esp32_ble_tracker: no fully compatible:
+    * When present the scan parameters / start / stop are delegated to esp32_ble_tracker
+    * When absent the ble_adv_handler will automatically start with default parameters (Passive, interval 16ms, windows 16ms)
+* Addition of variant vfr1 for new 'zhimei' remote
+
 ## 01 March 2025
 
 ### New features

@@ -254,6 +254,14 @@ BLE_ADV_CODECS = {
                 "ble_param": [0x1A, 0x03],
                 "header": [0x48, 0x46, 0x4B, 0x4A],
             },
+            "vfr1": {
+                "class": "ZhimeiEncoderV1",
+                "translator": "default_translator_zhimei_fan",
+                "args": [],
+                "max_forced_id": 0xFFFF,
+                "ble_param": [0x1A, 0xFF],
+                "header": [0x1F, 0x61, 0x3E, 0x48, 0x46, 0x4B, 0x4A],
+            },
             "v1": {
                 "class": "ZhimeiEncoderV1",
                 "translator": "default_translator_zmv1",
