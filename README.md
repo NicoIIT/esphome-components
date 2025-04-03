@@ -2,6 +2,19 @@
 
 Custom components for ESPHome using BLE Advertising.
 
+# WARNING - DEPRECATED SOON - MIGRATE TO HA INTEGRATION
+Those components will very soon **no more be supported**, please migrate to the **[Home Assistant custom integration](https://github.com/NicoIIT/ha-ble-adv)**.
+
+The Home Assistant integration is very easy to use, it can either use the Bluetooth stack of the Home Assistant Host or an ESPHome based [ble_adv_proxy](https://github.com/NicoIIT/esphome-ble_adv_proxy).
+
+The __migration__ is very easy:
+* if your HA Host does not have bluetooth or is not in your device bluetooth range, add `ble_adv_proxy` to your ESP configuration
+* Configure the HA component and add an integration (see component doc) by duplicating the config of your existing ESPHome controller, simply by switching it ON / OFF: no more config to find in the logs, it is automatic !
+* Configure your Entities characteristics via the UI, name it and you are done!
+* Remove everything related to those components on your ESP configuration, keeping only the `ble_adv_proxy` part if needed. You can even use a `bluetooth_proxy` with it: it is fully compatible.
+
+Should you think it is missing features do not hesitate to open [feature requests](https://github.com/NicoIIT/ha-ble-adv/issues/new/choose)!
+
 ## Requirements
 Those components are [ESPHome external component](https://esphome.io/components/external_components.html). In order to use them you will need to have:
 * A basic knowledge of [ESPHome](https://esphome.io/). A good entry point is [here](https://esphome.io/guides/getting_started_hassio.html).
